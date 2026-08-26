@@ -572,6 +572,29 @@ supply_chains = {
 }
 
 
+def identify_market(ticker, company_name):
+  """Convert Yahoo ticker suffixes into a concise user-facing market label."""
+  if ticker.endswith((".TW", ".TWO")):
+    return "🇹🇼 台股"
+  if ticker.endswith(".T"):
+    return "🇯🇵 日股"
+  if ticker.endswith((".SS", ".SZ")):
+    return "🇨🇳 中股"
+  if ticker.endswith(".HK"):
+    return "🇭🇰 港股"
+  if ticker.endswith((".KS", ".KQ")):
+    return "🇰🇷 韓股"
+  if ticker.endswith((".DE", ".PA", ".SW", ".L", ".AS")):
+    return "🇪🇺 歐股"
+  if ticker == "未上市":
+    if company_name in {"長鑫存儲", "智元機器人"}:
+      return "🇨🇳 中國未上市"
+    if company_name in {"台中精機", "友嘉集團"}:
+      return "🇹🇼 台灣未上市"
+    return "未上市"
+  return "🇺🇸 美股"
+
+
 @st.cache_data(ttl=600)
 def fetch_stock_data(cache_version):
   items=[(category,item) for category,stocks in supply_chains.items() for item in stocks]
@@ -584,9 +607,10 @@ def fetch_stock_data(cache_version):
   results=[]
   for category,item in items:
     ticker=item["代碼"]
+    market=identify_market(ticker, item["名稱"])
     if ticker == "未上市":
       results.append({
-          "產業板塊":category,"股票名稱":item["名稱"],"上下游":item["位置"],"承作業務":item["業務"],"記憶體類型":item.get("記憶體類型","—"),"代碼":ticker,
+          "市場":market,"產業板塊":category,"股票名稱":item["名稱"],"上下游":item["位置"],"承作業務":item["業務"],"記憶體類型":item.get("記憶體類型","—"),"代碼":ticker,
           "資料狀態":"未上市／無公開行情","最新收盤價":0.0,"漲跌金額":0.0,
           "漲跌幅數值":0.0,"漲跌幅(%)":"—",
       })
@@ -618,7 +642,7 @@ def fetch_stock_data(cache_version):
     except Exception:
       close_price=change=pct_change=0.0; status="讀取失敗"
     results.append({
-        "產業板塊":category,"股票名稱":item["名稱"],"上下游":item["位置"],"承作業務":item["業務"],"記憶體類型":item.get("記憶體類型","—"),"代碼":ticker,
+        "市場":market,"產業板塊":category,"股票名稱":item["名稱"],"上下游":item["位置"],"承作業務":item["業務"],"記憶體類型":item.get("記憶體類型","—"),"代碼":ticker,
         "資料狀態":status,"最新收盤價":round(close_price,2),"漲跌金額":round(change,2),
         "漲跌幅數值":round(pct_change,2),"漲跌幅(%)":f"{round(pct_change,2)}%",
     })
@@ -667,9 +691,9 @@ def build_sector_word_report(report_df, sector_name, average_change):
   meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
   meta.add_run(f"資料時間：{datetime.now().strftime('%Y/%m/%d %H:%M')}　板塊平均漲跌幅：{average_change:+.2f}%　來源：Yahoo Finance")
 
-  wanted = ["股票名稱", "上下游", "承作業務", "記憶體類型", "代碼", "資料狀態", "最新收盤價", "漲跌金額", "漲跌幅(%)"]
+  wanted = ["市場", "股票名稱", "上下游", "承作業務", "記憶體類型", "代碼", "資料狀態", "最新收盤價", "漲跌金額", "漲跌幅(%)"]
   columns = [c for c in wanted if c in report_df.columns]
-  widths = {"股票名稱":1.15,"上下游":.65,"承作業務":3.15,"記憶體類型":1.0,"代碼":.85,"資料狀態":.9,"最新收盤價":.9,"漲跌金額":.8,"漲跌幅(%)":.8}
+  widths = {"市場":.85,"股票名稱":1.15,"上下游":.65,"承作業務":2.65,"記憶體類型":1.0,"代碼":.85,"資料狀態":.9,"最新收盤價":.9,"漲跌金額":.8,"漲跌幅(%)":.8}
   table = doc.add_table(rows=1, cols=len(columns)); table.style = "Table Grid"; table.autofit = False
   for idx, column in enumerate(columns):
     cell = table.rows[0].cells[idx]; cell.width = Inches(widths.get(column, 1.0)); cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
@@ -707,7 +731,7 @@ if st.sidebar.button("🔄 重新整理即時股價"):
   st.cache_data.clear()
 
 with st.spinner("正在從 Yahoo Finance 抓取最新跨國股價數據，請稍候..."):
-  df_stocks = fetch_stock_data("20260826-abf-fallback-v12")
+  df_stocks = fetch_stock_data("20260826-market-label-v13")
   if not df_stocks.empty:
     df_stocks["產業板塊"] = df_stocks["產業板塊"].map(clean_category_label)
 
