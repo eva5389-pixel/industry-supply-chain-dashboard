@@ -15,7 +15,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 # 設定網頁版面與暗色風格
 st.set_page_config(
-    page_title="全球科技與供應鏈即時漲跌儀表板", page_icon="📈", layout="wide"
+    page_title="產業監控儀表板", page_icon="📊", layout="wide"
 )
 
 # 注入自定義 CSS
@@ -29,7 +29,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("🌐 全球科技、機器人、軍工、低軌衛星與供應鏈即時漲跌總覽")
+st.title("📊 產業監控儀表板")
 st.markdown(
     "即時串接 Yahoo Finance，追蹤美、台、日、中、港各關鍵產業供應鏈、上下游定位與承作業務。"
 )
