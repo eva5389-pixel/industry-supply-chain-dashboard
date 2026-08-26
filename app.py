@@ -481,6 +481,7 @@ supply_chains = {
         {"名稱": "羅克韋爾自動化", "位置": "下游", "業務": "工廠自動化、工業控制及機器人整合", "代碼": "ROK"},
         {"名稱": "Symbotic", "位置": "下游", "業務": "倉儲物流AI與機器人自動化系統", "代碼": "SYM"},
         {"名稱": "宇樹科技", "位置": "下游", "業務": "中國人形與四足機器人整機", "代碼": "688836.SS"},
+        {"名稱": "智元機器人", "位置": "下游", "業務": "中國人形機器人整機與具身智慧平台（未上市）", "代碼": "未上市"},
         {"名稱": "發那科", "位置": "下游", "業務": "工業機器人、CNC控制與智慧製造", "代碼": "6954.T"},
         {"名稱": "安川電機", "位置": "下游", "業務": "工業機器人、伺服驅動與運動控制", "代碼": "6506.T"},
         {"名稱": "Nabtesco", "位置": "上游", "業務": "機器人關節精密減速齒輪", "代碼": "6268.T"},
@@ -492,7 +493,7 @@ supply_chains = {
 @st.cache_data(ttl=600)
 def fetch_stock_data(cache_version):
   items=[(category,item) for category,stocks in supply_chains.items() for item in stocks]
-  tickers=list(dict.fromkeys(item["代碼"] for _,item in items))
+  tickers=list(dict.fromkeys(item["代碼"] for _,item in items if item["代碼"] != "未上市"))
   try:
     batch=yf.download(tickers,period="5d",interval="1d",group_by="ticker",auto_adjust=False,progress=False,threads=True,timeout=25)
   except Exception:
@@ -501,6 +502,13 @@ def fetch_stock_data(cache_version):
   results=[]
   for category,item in items:
     ticker=item["代碼"]
+    if ticker == "未上市":
+      results.append({
+          "產業板塊":category,"股票名稱":item["名稱"],"上下游":item["位置"],"承作業務":item["業務"],"記憶體類型":item.get("記憶體類型","—"),"代碼":ticker,
+          "資料狀態":"未上市／無公開行情","最新收盤價":0.0,"漲跌金額":0.0,
+          "漲跌幅數值":0.0,"漲跌幅(%)":"—",
+      })
+      continue
     try:
       if isinstance(batch.columns,pd.MultiIndex) and ticker in batch.columns.get_level_values(0):
         close=pd.to_numeric(batch[ticker]["Close"],errors="coerce").dropna()
