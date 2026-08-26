@@ -882,7 +882,10 @@ def build_sector_word_report(report_df, sector_name, average_change):
   meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
   meta.add_run(f"資料時間：{datetime.now().strftime('%Y/%m/%d %H:%M')}　板塊平均漲跌幅：{average_change:+.2f}%　來源：Yahoo Finance")
 
-  wanted = ["市場", "股票名稱", "上下游", "承作業務", "記憶體類型", "代碼", "資料狀態", "最新收盤價", "本益比", "漲跌金額", "漲跌幅(%)"]
+  wanted = ["市場", "股票名稱", "上下游", "承作業務"]
+  if sector_name == "記憶體":
+    wanted.append("記憶體類型")
+  wanted += ["代碼", "資料狀態", "最新收盤價", "本益比", "漲跌金額", "漲跌幅(%)"]
   columns = [c for c in wanted if c in report_df.columns]
   widths = {"市場":.85,"股票名稱":1.15,"上下游":.65,"承作業務":2.35,"記憶體類型":1.0,"代碼":.85,"資料狀態":.9,"最新收盤價":.9,"本益比":.7,"漲跌金額":.8,"漲跌幅(%)":.8}
   table = doc.add_table(rows=1, cols=len(columns)); table.style = "Table Grid"; table.autofit = False
@@ -1030,7 +1033,10 @@ else:
       key=f"word_{report_name}",
   )
 
-  display_cols = [c for c in page_df.columns if c != "漲跌幅數值"]
+  hidden_cols = {"漲跌幅數值"}
+  if selected_page != "記憶體":
+    hidden_cols.add("記憶體類型")
+  display_cols = [c for c in page_df.columns if c not in hidden_cols]
   display_table = page_df[display_cols].copy()
 
   def table_color(value):
