@@ -476,7 +476,7 @@ supply_chains = {
         {"名稱": "南電", "位置": "中游", "業務": "ABF載板及高階IC封裝基板製造", "代碼": "8046.TW"},
         {"名稱": "景碩", "位置": "中游", "業務": "ABF載板、FC-BGA與先進IC封裝基板", "代碼": "3189.TW"},
         {"名稱": "Ibiden", "位置": "中游", "業務": "日本高階ABF載板與AI／伺服器處理器封裝基板", "代碼": "4062.T"},
-        {"名稱": "Shinko Electric", "位置": "中游", "業務": "日本半導體封裝、FC-BGA及高階IC載板", "代碼": "6967.T"},
+        {"名稱": "Shinko Electric", "位置": "中游", "業務": "日本半導體封裝、FC-BGA及高階IC載板（目前無公開行情）", "代碼": "未上市"},
     ],
     "機器人": [
         {"名稱": "上銀", "位置": "上游", "業務": "滾珠螺桿、線性滑軌及機器人關節傳動元件", "代碼": "2049.TW"},
@@ -528,6 +528,17 @@ def fetch_stock_data(cache_version):
         close=pd.to_numeric(batch["Close"],errors="coerce").dropna()
       else:
         close=pd.Series(dtype=float)
+      # Yahoo 的大量批次下載偶爾會漏掉台、日個股；缺漏時自動逐檔補抓。
+      if len(close) < 2:
+        single = yf.download(
+            ticker, period="5d", interval="1d", auto_adjust=False,
+            progress=False, threads=False, timeout=15,
+        )
+        if "Close" in single:
+          single_close = single["Close"]
+          if isinstance(single_close, pd.DataFrame):
+            single_close = single_close.iloc[:, 0]
+          close = pd.to_numeric(single_close, errors="coerce").dropna()
       if len(close)>=2:
         close_price=float(close.iloc[-1]); prev_close=float(close.iloc[-2])
         change=close_price-prev_close; pct_change=change/prev_close*100 if prev_close else 0.0
@@ -626,7 +637,7 @@ if st.sidebar.button("🔄 重新整理即時股價"):
   st.cache_data.clear()
 
 with st.spinner("正在從 Yahoo Finance 抓取最新跨國股價數據，請稍候..."):
-  df_stocks = fetch_stock_data("20260826-optical-chain-sort-v11")
+  df_stocks = fetch_stock_data("20260826-abf-fallback-v12")
   if not df_stocks.empty:
     df_stocks["產業板塊"] = df_stocks["產業板塊"].map(clean_category_label)
 
