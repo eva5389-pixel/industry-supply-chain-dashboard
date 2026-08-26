@@ -1,4 +1,5 @@
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from io import BytesIO
 import pandas as pd
@@ -740,6 +741,30 @@ def fetch_stock_data(cache_version):
   return pd.DataFrame(results)
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_trailing_pe(tickers):
+  """Fetch trailing P/E lazily for the selected sector; missing/negative EPS stays blank."""
+  symbols = [ticker for ticker in dict.fromkeys(tickers) if ticker != "未上市"]
+
+  def load_one(ticker):
+    try:
+      info = yf.Ticker(ticker).get_info()
+      value = info.get("trailingPE")
+      if value is None or pd.isna(value) or float(value) <= 0:
+        return ticker, None
+      return ticker, round(float(value), 2)
+    except Exception:
+      return ticker, None
+
+  values = {}
+  with ThreadPoolExecutor(max_workers=min(8, max(1, len(symbols)))) as executor:
+    jobs = [executor.submit(load_one, ticker) for ticker in symbols]
+    for job in as_completed(jobs):
+      ticker, value = job.result()
+      values[ticker] = value
+  return values
+
+
 def clean_category_label(value):
   """Hide internal maintenance tags from user-facing industry names."""
   return re.sub(r"\s*[（(](?:新增|擴充(?:板塊)?)[）)]", "", str(value)).strip()
@@ -782,9 +807,9 @@ def build_sector_word_report(report_df, sector_name, average_change):
   meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
   meta.add_run(f"資料時間：{datetime.now().strftime('%Y/%m/%d %H:%M')}　板塊平均漲跌幅：{average_change:+.2f}%　來源：Yahoo Finance")
 
-  wanted = ["市場", "股票名稱", "上下游", "承作業務", "記憶體類型", "代碼", "資料狀態", "最新收盤價", "漲跌金額", "漲跌幅(%)"]
+  wanted = ["市場", "股票名稱", "上下游", "承作業務", "記憶體類型", "代碼", "資料狀態", "最新收盤價", "本益比", "漲跌金額", "漲跌幅(%)"]
   columns = [c for c in wanted if c in report_df.columns]
-  widths = {"市場":.85,"股票名稱":1.15,"上下游":.65,"承作業務":2.65,"記憶體類型":1.0,"代碼":.85,"資料狀態":.9,"最新收盤價":.9,"漲跌金額":.8,"漲跌幅(%)":.8}
+  widths = {"市場":.85,"股票名稱":1.15,"上下游":.65,"承作業務":2.35,"記憶體類型":1.0,"代碼":.85,"資料狀態":.9,"最新收盤價":.9,"本益比":.7,"漲跌金額":.8,"漲跌幅(%)":.8}
   table = doc.add_table(rows=1, cols=len(columns)); table.style = "Table Grid"; table.autofit = False
   for idx, column in enumerate(columns):
     cell = table.rows[0].cells[idx]; cell.width = Inches(widths.get(column, 1.0)); cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
@@ -888,6 +913,15 @@ if selected_page is None:
 else:
   page_df = df_stocks[df_stocks["產業板塊"] == selected_page].copy()
   page_title = f"{selected_page}｜板塊即時行情"
+
+if selected_page is None:
+  page_df["本益比"] = "選擇板塊後載入"
+else:
+  with st.spinner("正在載入本板塊近十二個月本益比..."):
+    pe_values = fetch_trailing_pe(tuple(page_df["代碼"].tolist()))
+  page_df["本益比"] = page_df["代碼"].map(pe_values).map(
+      lambda value: f"{value:.2f}" if pd.notna(value) else "—"
+  )
 
 position_order = {"上游": 0, "中游": 1, "中下游": 2, "下游": 3, "跨供應鏈": 4}
 page_df["_供應鏈排序"] = page_df["上下游"].map(position_order).fillna(9)
