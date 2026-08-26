@@ -912,7 +912,13 @@ def build_sector_word_report(report_df, sector_name, average_change):
     for idx, column in enumerate(columns):
       cells[idx].width = Inches(widths.get(column, 1.0)); cells[idx].vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
       p = cells[idx].paragraphs[0]; p.alignment = WD_ALIGN_PARAGRAPH.LEFT if column in ("股票名稱", "承作業務") else WD_ALIGN_PARAGRAPH.CENTER
-      r = p.add_run(str(item.get(column, ""))); r.font.size = Pt(8)
+      cell_value = item.get(column, "")
+      if column in ("最新收盤價", "漲跌金額"):
+        try:
+          cell_value = f"{float(cell_value):.2f}"
+        except (TypeError, ValueError):
+          pass
+      r = p.add_run(str(cell_value)); r.font.size = Pt(8)
       if column in ("漲跌金額", "漲跌幅(%)"):
         r.bold = True; r.font.color.rgb = RGBColor(210,35,45) if change > 0 else RGBColor(20,145,75) if change < 0 else RGBColor(50,50,50)
 
@@ -1076,6 +1082,7 @@ else:
               ("font-weight", "700"),
           ]},
       ])
+      .format({"最新收盤價": "{:.2f}", "漲跌金額": "{:.2f}"})
       .map(table_color, subset=["漲跌金額", "漲跌幅(%)"])
   )
   st.dataframe(styled, hide_index=True, width="stretch", height=650)
