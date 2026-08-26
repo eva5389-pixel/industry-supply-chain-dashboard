@@ -729,10 +729,30 @@ def identify_market(ticker, company_name):
 def fetch_stock_data(cache_version):
   items=[(category,item) for category,stocks in supply_chains.items() for item in stocks]
   tickers=list(dict.fromkeys(item["代碼"] for _,item in items if item["代碼"] != "未上市"))
-  try:
-    batch=yf.download(tickers,period="5d",interval="1d",group_by="ticker",auto_adjust=False,progress=False,threads=True,timeout=25)
-  except Exception:
-    batch=pd.DataFrame()
+  close_by_ticker={}
+  # Yahoo 對超大型代碼清單容易整批漏資料，因此每35檔分批下載。
+  for start in range(0, len(tickers), 35):
+    chunk=tickers[start:start+35]
+    try:
+      batch=yf.download(
+          chunk,period="5d",interval="1d",group_by="ticker",
+          auto_adjust=False,progress=False,threads=True,timeout=25,
+      )
+    except Exception:
+      batch=pd.DataFrame()
+    for ticker in chunk:
+      try:
+        if isinstance(batch.columns,pd.MultiIndex) and ticker in batch.columns.get_level_values(0):
+          series=batch[ticker]["Close"]
+        elif len(chunk)==1 and "Close" in batch:
+          series=batch["Close"]
+        else:
+          continue
+        if isinstance(series,pd.DataFrame):
+          series=series.iloc[:,0]
+        close_by_ticker[ticker]=pd.to_numeric(series,errors="coerce").dropna()
+      except Exception:
+        continue
 
   results=[]
   for category,item in items:
@@ -746,12 +766,7 @@ def fetch_stock_data(cache_version):
       })
       continue
     try:
-      if isinstance(batch.columns,pd.MultiIndex) and ticker in batch.columns.get_level_values(0):
-        close=pd.to_numeric(batch[ticker]["Close"],errors="coerce").dropna()
-      elif len(tickers)==1 and "Close" in batch:
-        close=pd.to_numeric(batch["Close"],errors="coerce").dropna()
-      else:
-        close=pd.Series(dtype=float)
+      close=close_by_ticker.get(ticker,pd.Series(dtype=float))
       # Yahoo 的大量批次下載偶爾會漏掉台、日個股；缺漏時自動逐檔補抓。
       if len(close) < 2:
         single = yf.download(
@@ -885,7 +900,7 @@ if st.sidebar.button("🔄 重新整理即時股價"):
   st.cache_data.clear()
 
 with st.spinner("正在從 Yahoo Finance 抓取最新跨國股價數據，請稍候..."):
-  df_stocks = fetch_stock_data("20260826-market-label-v13")
+  df_stocks = fetch_stock_data("20260826-chunked-quotes-v14")
   if not df_stocks.empty:
     df_stocks["產業板塊"] = df_stocks["產業板塊"].map(clean_category_label)
 
