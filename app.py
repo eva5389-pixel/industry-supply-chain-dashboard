@@ -315,6 +315,7 @@ supply_chains = {
         {"名稱": "川湖", "位置": "上游", "業務": "AI伺服器滑軌、機構件與導軌系統", "代碼": "2059.TW"},
         {"名稱": "CoreWeave", "位置": "下游", "業務": "GPU算力租賃、AI雲端基礎設施與訓練平台", "代碼": "CRWV"},
         {"名稱": "Palantir", "位置": "下游", "業務": "企業與國防AI資料分析、決策軟體平台", "代碼": "PLTR"},
+        {"名稱": "Anthropic（Claude）", "位置": "下游", "業務": "Claude大型語言模型、企業生成式AI與AI安全研究（美國未上市）", "代碼": "未上市"},
     ],
     "光通訊": [
         {"名稱": "聯亞", "位置": "上游", "業務": "InP磊晶片、雷射元件與高速光通訊材料", "代碼": "3081.TWO"},
@@ -794,6 +795,8 @@ def identify_market(ticker, company_name):
   if ticker.endswith(".TO"):
     return "🇨🇦 加股"
   if ticker == "未上市":
+    if company_name == "Anthropic（Claude）":
+      return "🇺🇸 美國未上市"
     if company_name in {"長鑫存儲", "智元機器人"}:
       return "🇨🇳 中國未上市"
     if company_name in {"台中精機", "友嘉集團"}:
@@ -990,7 +993,7 @@ if st.sidebar.button("🔄 重新整理即時股價"):
   st.cache_data.clear()
 
 with st.spinner("正在從 Yahoo Finance 抓取最新跨國股價數據，請稍候..."):
-  df_stocks = fetch_stock_data("20260902-asic-expanded-v15")
+  df_stocks = fetch_stock_data("20260902-anthropic-cloud-v16")
   if not df_stocks.empty:
     df_stocks["產業板塊"] = df_stocks["產業板塊"].map(clean_category_label)
 
