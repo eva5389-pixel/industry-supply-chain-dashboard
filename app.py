@@ -1073,6 +1073,13 @@ for name in supply_chains.keys():
   page_labels.append(label)
   label_to_sector[label] = sector
 
+# 舊工作階段會保留原選項；每個導覽版本首次載入時主動帶到新增板塊。
+sector_nav_version = "20260908-high-end-pcb-v2"
+if st.session_state.get("sector_nav_version") != sector_nav_version:
+  st.session_state["sector_page"] = featured_label
+  st.session_state["sector_nav_version"] = sector_nav_version
+
+st.info("🆕 已新增「高階PCB」板塊，共 13 家台灣、日本、美國與中國供應鏈公司。")
 selected_label = st.selectbox("📑 產業板塊分頁", page_labels, key="sector_page")
 selected_page = label_to_sector[selected_label]
 if best_sector is not None:
