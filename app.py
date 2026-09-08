@@ -1057,8 +1057,18 @@ best_return = float(sector_daily.iloc[0]) if not sector_daily.empty else None
 
 page_labels = ["🌐 全部總覽"]
 label_to_sector = {"🌐 全部總覽": None}
+
+# 將新加入的高階 PCB 固定在選單前方，避免埋在數十個板塊中不易找到。
+featured_sector = "高階PCB"
+if featured_sector in supply_chains:
+  featured_label = f"🆕 {featured_sector}（{len(supply_chains[featured_sector])} 家）"
+  page_labels.append(featured_label)
+  label_to_sector[featured_label] = featured_sector
+
 for name in supply_chains.keys():
   sector = clean_category_label(name)
+  if sector == featured_sector:
+    continue
   label = f"👑 {sector}" if sector == best_sector else sector
   page_labels.append(label)
   label_to_sector[label] = sector
