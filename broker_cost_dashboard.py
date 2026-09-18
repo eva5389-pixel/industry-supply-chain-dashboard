@@ -76,7 +76,16 @@ if uploaded:
         current=st.number_input("目前股價（用於計算成本乖離）",min_value=0.0,value=0.0,step=0.5)
         if current>0:
             result["股價距成本(%)"]=result["估算平均成本"].apply(lambda x:(current/x-1)*100 if x>0 else 0)
-        result["淨買超張數"]=result["累積買進"]-result["累積賣出"]\n            result["動向"]=result["淨買超張數"].apply(lambda x:"🟢 加碼" if x>0 else ("🔴 減碼" if x<0 else "⚪ 持平"))\n            result=result.sort_values("估算剩餘張數",ascending=False)
+        result["淨買超張數"]=result["累積買進"]-result["累積賣出"]\n            result["動向"]=result["淨買超張數"].apply(lambda x:"🟢 加碼" if x>0 else ("🔴 減碼" if x<0 else "⚪ 持平"))
+        if current > 0:
+            result["交易訊號"] = result.apply(
+                lambda r: (
+                    "🟢 買入觀察" if r["估算平均成本"] > 0 and abs(current / r["估算平均成本"] - 1) <= 0.02 and r["淨買超張數"] > 0
+                    else ("🔴 賣出觀察" if r["估算平均成本"] > 0 and current >= r["估算平均成本"] * 1.10 and r["淨買超張數"] < 0
+                    else ("🟠 風險退出" if r["估算平均成本"] > 0 and current <= r["估算平均成本"] * 0.95 and r["淨買超張數"] < 0
+                    else "⚪ 觀察"))
+                ), axis=1
+            )\n            result=result.sort_values("估算剩餘張數",ascending=False)
         c1,c2,c3=st.columns(3)
         c1.metric("追蹤股票",stock)
         c2.metric(f"近 {window} 日追蹤分點",len(result))
