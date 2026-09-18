@@ -116,6 +116,8 @@ else:
 
 with tab_foreign:
     st.header("🌍 外資券商買賣追蹤器")
+    st.info("自動化資料源狀態：TWSE 官方完整券商分點買賣日報屬付費資料商品，因此不以未授權爬蟲繞過。此頁先強化 5/10/20/60 日計算；接上合法資料檔/API 後可直接自動套用。")
+    foreign_window = st.selectbox("外資追蹤區間", [5, 10, 20, 60], index=2, key="foreign_window")
     st.caption("從券商分點資料獨立追蹤外資券商，特別顯示摩根大通、美林與美商高盛。")
     foreign_file = st.file_uploader("上傳外資券商分點 CSV", type=["csv"], key="foreign_file")
     focus_names = ["摩根大通", "美林", "美林證券", "美商高盛", "美商高盛亞", "高盛"]
@@ -128,6 +130,12 @@ with tab_foreign:
         stock_col = next((x for x in ["股票名稱","名稱","股票"] if x in foreign.columns), None)
         code_col = next((x for x in ["股票代號","代號"] if x in foreign.columns), None)
         if broker_col and buy_col and sell_col:
+            date_col = next((x for x in ["日期","交易日期","date"] if x in foreign.columns), None)
+            if date_col:
+                foreign[date_col] = pd.to_datetime(foreign[date_col], errors="coerce")
+                dates = sorted(foreign[date_col].dropna().drop_duplicates())
+                keep = dates[-int(foreign_window):]
+                foreign = foreign[foreign[date_col].isin(keep)].copy()
             foreign[buy_col] = pd.to_numeric(foreign[buy_col], errors="coerce").fillna(0)
             foreign[sell_col] = pd.to_numeric(foreign[sell_col], errors="coerce").fillna(0)
             foreign["淨買賣超"] = foreign[buy_col] - foreign[sell_col]
@@ -135,11 +143,23 @@ with tab_foreign:
                 lambda x: "摩根大通" if "摩根大通" in x else ("美林" if "美林" in x else ("高盛" if "高盛" in x else "其他外資"))
             )
             focus = foreign[foreign["重點外資"] != "其他外資"].copy()
-            st.subheader("⭐ 摩根大通・美林・高盛")
+            st.subheader(f"⭐ 摩根大通・美林・高盛｜近 {foreign_window} 日")
+            focus["買賣方向"] = focus["淨買賣超"].apply(lambda x: "🟢 買超" if x > 0 else ("🔴 賣超" if x < 0 else "⚪ 持平"))
             summary = focus.groupby("重點外資", as_index=False).agg(
                 買進張數=(buy_col,"sum"), 賣出張數=(sell_col,"sum"), 淨買賣超=("淨買賣超","sum")
             )
+            summary["買賣方向"] = summary["淨買賣超"].apply(lambda x: "🟢 買超" if x > 0 else ("🔴 賣超" if x < 0 else "⚪ 持平"))
             st.dataframe(summary, hide_index=True, width="stretch")
+            if stock_col:
+                agg_cols = [code_col, stock_col] if code_col else [stock_col]
+                stock_flow = focus.groupby(agg_cols, as_index=False).agg(買進張數=(buy_col,"sum"), 賣出張數=(sell_col,"sum"), 淨買賣超=("淨買賣超","sum"))
+                left, right = st.columns(2)
+                with left:
+                    st.markdown("#### 🟢 重點外資買超 Top 10")
+                    st.dataframe(stock_flow.nlargest(10, "淨買賣超"), hide_index=True, width="stretch")
+                with right:
+                    st.markdown("#### 🔴 重點外資賣超 Top 10")
+                    st.dataframe(stock_flow.nsmallest(10, "淨買賣超"), hide_index=True, width="stretch")
             if stock_col:
                 st.subheader("重點外資個股進出")
                 cols=[x for x in [code_col,stock_col,broker_col,buy_col,sell_col,"淨買賣超",price_col] if x]
