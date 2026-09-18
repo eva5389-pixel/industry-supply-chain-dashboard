@@ -1,0 +1,61 @@
+import pandas as pd
+import streamlit as st
+
+st.set_page_config(page_title="券商分點成本追蹤", page_icon="🏦", layout="wide")
+st.title("🏦 台股券商分點成本追蹤儀表板")
+st.caption("用每日分點買進／賣出張數與均價，推估券商分點的剩餘庫存與平均成本。")
+
+st.warning("公開分點資料代表該券商分點彙總交易，不等於單一主力或單一投資人的真實持倉。成本為研究用推估值。")
+
+with st.sidebar:
+    st.header("輸入資料")
+    stock = st.text_input("股票代號", "3189")
+    method = st.selectbox("成本法", ["移動平均成本法", "FIFO"])
+    uploaded = st.file_uploader("上傳分點每日資料 CSV", type=["csv"])
+    st.markdown("CSV 欄位：日期、券商分點、買進張數、買進均價、賣出張數、賣出均價")
+
+def moving_average(df):
+    rows=[]
+    for broker,g in df.sort_values("日期").groupby("券商分點"):
+        qty=0.0; cost=0.0; total_buy=0.0; total_sell=0.0
+        for _,r in g.iterrows():
+            b=float(r["買進張數"]); bp=float(r["買進均價"]); s=float(r["賣出張數"])
+            if b>0:
+                cost=(qty*cost+b*bp)/(qty+b) if qty+b>0 else 0
+                qty+=b; total_buy+=b
+            if s>0:
+                qty=max(0.0,qty-s); total_sell+=s
+                if qty==0: cost=0.0
+        rows.append({"券商分點":broker,"累積買進":total_buy,"累積賣出":total_sell,"估算剩餘張數":qty,"估算平均成本":cost})
+    return pd.DataFrame(rows)
+
+if uploaded:
+    df=pd.read_csv(uploaded)
+    need=["日期","券商分點","買進張數","買進均價","賣出張數","賣出均價"]
+    missing=[x for x in need if x not in df.columns]
+    if missing:
+        st.error("缺少欄位："+"、".join(missing))
+    else:
+        df["日期"]=pd.to_datetime(df["日期"])
+        for x in need[2:]: df[x]=pd.to_numeric(df[x],errors="coerce").fillna(0)
+        result=moving_average(df)
+        current=st.number_input("目前股價（用於計算成本乖離）",min_value=0.0,value=0.0,step=0.5)
+        if current>0:
+            result["股價距成本(%)"]=result["估算平均成本"].apply(lambda x:(current/x-1)*100 if x>0 else 0)
+        result=result.sort_values("估算剩餘張數",ascending=False)
+        c1,c2,c3=st.columns(3)
+        c1.metric("追蹤股票",stock)
+        c2.metric("追蹤分點",len(result))
+        c3.metric("推估淨庫存",f'{result["估算剩餘張數"].sum():,.0f} 張')
+        st.subheader("分點成本排行")
+        st.dataframe(result,hide_index=True,width="stretch")
+        st.subheader("每日原始分點資料")
+        st.dataframe(df.sort_values("日期",ascending=False),hide_index=True,width="stretch")
+else:
+    st.info("先上傳 CSV 即可開始計算。下一版可再接合法可用的自動資料來源。")
+    sample=pd.DataFrame([
+        ["2026-09-18","元大-某分點",100,420,20,430],
+        ["2026-09-19","元大-某分點",50,440,30,450],
+    ],columns=["日期","券商分點","買進張數","買進均價","賣出張數","賣出均價"])
+    st.subheader("CSV 格式範例")
+    st.dataframe(sample,hide_index=True,width="stretch")
