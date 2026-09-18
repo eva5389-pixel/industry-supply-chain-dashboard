@@ -51,6 +51,30 @@ with st.sidebar:
     uploaded = st.file_uploader("上傳分點每日資料 CSV", type=["csv"])
     st.markdown("CSV 欄位：日期、券商分點、買進張數、買進均價、賣出張數、賣出均價")
 
+def add_streak_metrics(df, broker_col, buy_col, sell_col, date_col=None):
+    """計算每個券商目前連續買超/賣超天數。"""
+    out = {}
+    if not date_col:
+        return out
+    x = df.copy()
+    x[date_col] = pd.to_datetime(x[date_col], errors="coerce")
+    x["__net"] = pd.to_numeric(x[buy_col], errors="coerce").fillna(0) - pd.to_numeric(x[sell_col], errors="coerce").fillna(0)
+    daily = x.groupby([broker_col, date_col], as_index=False)["__net"].sum().sort_values([broker_col, date_col])
+    for broker, g in daily.groupby(broker_col):
+        vals = g["__net"].tolist()
+        if not vals:
+            continue
+        sign = 1 if vals[-1] > 0 else (-1 if vals[-1] < 0 else 0)
+        streak = 0
+        if sign:
+            for v in reversed(vals):
+                if (v > 0 and sign == 1) or (v < 0 and sign == -1):
+                    streak += 1
+                else:
+                    break
+        out[str(broker)] = ("🟢 連買" if sign == 1 else ("🔴 連賣" if sign == -1 else "⚪ 持平"), streak)
+    return out
+
 def moving_average(df):
     rows=[]
     for broker,g in df.sort_values("日期").groupby("券商分點"):
@@ -143,12 +167,27 @@ with tab_foreign:
                 lambda x: "摩根大通" if "摩根大通" in x else ("美林" if "美林" in x else ("高盛" if "高盛" in x else "其他外資"))
             )
             focus = foreign[foreign["重點外資"] != "其他外資"].copy()
+            streaks = add_streak_metrics(focus, broker_col, buy_col, sell_col, date_col)
+            focus["連續動向"] = focus[broker_col].astype(str).map(lambda x: (streaks.get(x, ("⚪ 持平",0))[0] + " " + str(streaks.get(x, ("",0))[1]) + "日") if x in streaks else "—")
             st.subheader(f"⭐ 摩根大通・美林・高盛｜近 {foreign_window} 日")
             focus["買賣方向"] = focus["淨買賣超"].apply(lambda x: "🟢 買超" if x > 0 else ("🔴 賣超" if x < 0 else "⚪ 持平"))
             summary = focus.groupby("重點外資", as_index=False).agg(
                 買進張數=(buy_col,"sum"), 賣出張數=(sell_col,"sum"), 淨買賣超=("淨買賣超","sum")
             )
             summary["買賣方向"] = summary["淨買賣超"].apply(lambda x: "🟢 買超" if x > 0 else ("🔴 賣超" if x < 0 else "⚪ 持平"))
+            if date_col:
+                group_daily = focus.groupby(["重點外資", date_col], as_index=False)["淨買賣超"].sum().sort_values(["重點外資", date_col])
+                streak_summary = {}
+                for name, g in group_daily.groupby("重點外資"):
+                    vals = g["淨買賣超"].tolist()
+                    sign = 1 if vals and vals[-1] > 0 else (-1 if vals and vals[-1] < 0 else 0)
+                    n = 0
+                    if sign:
+                        for v in reversed(vals):
+                            if (v > 0 and sign == 1) or (v < 0 and sign == -1): n += 1
+                            else: break
+                    streak_summary[name] = ("🟢 連買" if sign == 1 else ("🔴 連賣" if sign == -1 else "⚪ 持平")) + f" {n}日"
+                summary["連續動向"] = summary["重點外資"].map(streak_summary).fillna("—")
             st.dataframe(summary, hide_index=True, width="stretch")
             if stock_col:
                 agg_cols = [code_col, stock_col] if code_col else [stock_col]
