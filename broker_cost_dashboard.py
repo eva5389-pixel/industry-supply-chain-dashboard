@@ -1,6 +1,7 @@
 import pandas as pd
 import streamlit as st
 import requests
+import yfinance as yf
 from datetime import datetime, timedelta
 
 st.set_page_config(page_title="券商分點成本追蹤", page_icon="🏦", layout="wide")
@@ -199,6 +200,36 @@ with tab_foreign:
                 with right:
                     st.markdown("#### 🔴 重點外資賣超 Top 10")
                     st.dataframe(stock_flow.nsmallest(10, "淨買賣超"), hide_index=True, width="stretch")
+            if stock_col:
+                st.subheader("💰 外資估算成本・現價乖離・觀察訊號")
+                if price_col:
+                    focus[price_col] = pd.to_numeric(focus[price_col], errors="coerce")
+                    focus["估算買進金額"] = focus[buy_col] * focus[price_col]
+                    cost_keys = [code_col, stock_col, "重點外資"] if code_col else [stock_col, "重點外資"]
+                    cost_view = focus.groupby(cost_keys, as_index=False).agg(
+                        累積買進張數=(buy_col,"sum"), 累積賣出張數=(sell_col,"sum"),
+                        估算買進金額=("估算買進金額","sum"), 淨買賣超=("淨買賣超","sum")
+                    )
+                    cost_view["估算平均買進成本"] = cost_view.apply(lambda r: r["估算買進金額"]/r["累積買進張數"] if r["累積買進張數"]>0 else None, axis=1)
+                    if code_col:
+                        def latest_price(code):
+                            try:
+                                ticker = str(code).strip() + (".TW" if str(code).strip().isdigit() else "")
+                                h = yf.Ticker(ticker).history(period="5d")
+                                return float(h["Close"].dropna().iloc[-1]) if not h.empty else None
+                            except Exception:
+                                return None
+                        cost_view["目前股價"] = cost_view[code_col].astype(str).map(latest_price)
+                        cost_view["距成本(%)"] = cost_view.apply(lambda r: (r["目前股價"]/r["估算平均買進成本"]-1)*100 if pd.notna(r["目前股價"]) and pd.notna(r["估算平均買進成本"]) and r["估算平均買進成本"]>0 else None, axis=1)
+                        cost_view["觀察訊號"] = cost_view.apply(lambda r:
+                            "🟢 成本附近加碼" if pd.notna(r["距成本(%)"]) and abs(r["距成本(%)"]) <= 2 and r["淨買賣超"] > 0
+                            else ("🔴 高檔轉賣觀察" if pd.notna(r["距成本(%)"]) and r["距成本(%)"] >= 10 and r["淨買賣超"] < 0
+                            else ("🟠 跌破成本且賣超" if pd.notna(r["距成本(%)"]) and r["距成本(%)"] <= -5 and r["淨買賣超"] < 0
+                            else "⚪ 觀察")), axis=1)
+                    st.dataframe(cost_view.sort_values("淨買賣超", ascending=False), hide_index=True, width="stretch")
+                else:
+                    st.caption("資料若包含「均價／買進均價／買價」，即可自動估算外資成本與現價乖離。")
+
             if stock_col:
                 st.subheader("重點外資個股進出")
                 cols=[x for x in [code_col,stock_col,broker_col,buy_col,sell_col,"淨買賣超",price_col] if x]
