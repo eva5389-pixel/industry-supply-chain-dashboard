@@ -3,7 +3,7 @@ import streamlit as st
 
 st.set_page_config(page_title="券商分點成本追蹤", page_icon="🏦", layout="wide")
 st.title("📊 籌碼與期貨市場追蹤儀表板")
-tab_broker, tab_futures = st.tabs(["🏦 券商分點", "📈 期貨市場"])
+tab_broker, tab_futures, tab_pelosi = st.tabs(["🏦 券商分點", "📈 期貨市場", "🏛️ Pelosi 持股"])
 
 with tab_broker:
     st.header("台股券商分點成本追蹤")    
@@ -117,3 +117,39 @@ with tab_futures:
         st.markdown("""
         **預計追蹤：** 台指期 TX、微型台指 MTX、電子期、金融期、台灣期交所三大法人未平倉、期現貨價差，以及美股指數／黃金等主要期貨。
         """)
+
+
+with tab_pelosi:
+    st.header("🏛️ Nancy / Paul Pelosi 公開披露持股與成本估算")
+    st.caption("資料依美國眾議院 PTR 公開披露。交易金額多以區間申報，因此成本只能估算，並非精確成交成本。")
+    st.link_button("開啟 Nancy Pelosi Stock Tracker", "https://nancypelosistocktracker.org/zh-TW")
+
+    pelosi = pd.DataFrame([
+        ["NVDA","NVIDIA","股票","Buy","2024-06-26",10000,1000000,5000000,None],
+        ["NVDA","NVIDIA","股票","Buy","2024-07-26",10000,1000000,5000000,None],
+        ["NVDA","NVIDIA","股票","Sell","2024-12-31",10000,1000000,5000000,None],
+        ["AAPL","Apple","股票","Sell","2024-12-31",31600,5000000,25000000,None],
+        ["AVGO","Broadcom","Call","Buy","2024-06-24",None,1000000,5000000,800],
+        ["PANW","Palo Alto Networks","Call","Exercise","2024-12-20",None,1000000,5000000,100],
+        ["NVDA","NVIDIA","Call","Exercise","2024-12-20",None,500000,1000000,12],
+        ["GOOGL","Alphabet","Call","Buy","2025-01-14",None,250000,500000,150],
+        ["AMZN","Amazon","Call","Buy","2025-01-14",None,250000,500000,150],
+        ["VST","Vistra","Call","Buy","2025-01-14",None,500000,1000000,50],
+        ["TEM","Tempus AI","Call","Buy","2025-01-14",None,50000,100000,20],
+    ], columns=["代號","公司","類型","交易","日期","股數","金額下限","金額上限","履約價"])
+    pelosi["日期"] = pd.to_datetime(pelosi["日期"])
+    pelosi["申報金額中位數"] = (pelosi["金額下限"] + pelosi["金額上限"]) / 2
+    pelosi["估算每股成本"] = pelosi.apply(
+        lambda r: r["申報金額中位數"] / r["股數"] if pd.notna(r["股數"]) and r["股數"] > 0 and r["交易"] == "Buy"
+        else (r["履約價"] if r["類型"] == "Call" and pd.notna(r["履約價"]) else None), axis=1
+    )
+    st.subheader("公開交易與成本估算")
+    st.dataframe(pelosi, hide_index=True, width="stretch")
+
+    st.subheader("成本估算方法")
+    st.markdown("""
+    - **已披露股票買進且有股數**：以「申報金額區間中位數 ÷ 股數」估算每股投入成本。
+    - **選擇權**：履約價不是完整持股成本；完整成本還需要權利金、合約數與後續行權資訊，因此另外標示。
+    - **申報金額為區間**：同時保留下限與上限，避免把中位數誤認為實際成交金額。
+    - **披露有時間落差**：此頁呈現的是已公開申報資訊，不代表即時持倉。
+    """)
