@@ -3,7 +3,7 @@ import streamlit as st
 
 st.set_page_config(page_title="券商分點成本追蹤", page_icon="🏦", layout="wide")
 st.title("📊 籌碼與期貨市場追蹤儀表板")
-tab_broker, tab_futures, tab_pelosi = st.tabs(["🏦 券商分點", "📈 期貨市場", "🏛️ Pelosi 持股"])
+tab_broker, tab_foreign, tab_futures, tab_pelosi = st.tabs(["🏦 券商分點", "🌍 外資券商", "📈 期貨市場", "🏛️ Pelosi 持股"])
 
 with tab_broker:
     st.header("台股券商分點成本追蹤")    
@@ -94,6 +94,44 @@ else:
     st.subheader("CSV 格式範例")
     st.dataframe(sample,hide_index=True,width="stretch")
 
+
+
+with tab_foreign:
+    st.header("🌍 外資券商買賣追蹤器")
+    st.caption("從券商分點資料獨立追蹤外資券商，特別顯示摩根大通、美林與美商高盛。")
+    foreign_file = st.file_uploader("上傳外資券商分點 CSV", type=["csv"], key="foreign_file")
+    focus_names = ["摩根大通", "美林", "美林證券", "美商高盛", "美商高盛亞", "高盛"]
+    if foreign_file:
+        foreign = pd.read_csv(foreign_file)
+        broker_col = next((x for x in ["券商分點","券商名稱","分點"] if x in foreign.columns), None)
+        buy_col = next((x for x in ["買進張數","買張","買進"] if x in foreign.columns), None)
+        sell_col = next((x for x in ["賣出張數","賣張","賣出"] if x in foreign.columns), None)
+        price_col = next((x for x in ["均價","買進均價","買價"] if x in foreign.columns), None)
+        stock_col = next((x for x in ["股票名稱","名稱","股票"] if x in foreign.columns), None)
+        code_col = next((x for x in ["股票代號","代號"] if x in foreign.columns), None)
+        if broker_col and buy_col and sell_col:
+            foreign[buy_col] = pd.to_numeric(foreign[buy_col], errors="coerce").fillna(0)
+            foreign[sell_col] = pd.to_numeric(foreign[sell_col], errors="coerce").fillna(0)
+            foreign["淨買賣超"] = foreign[buy_col] - foreign[sell_col]
+            foreign["重點外資"] = foreign[broker_col].astype(str).apply(
+                lambda x: "摩根大通" if "摩根大通" in x else ("美林" if "美林" in x else ("高盛" if "高盛" in x else "其他外資"))
+            )
+            focus = foreign[foreign["重點外資"] != "其他外資"].copy()
+            st.subheader("⭐ 摩根大通・美林・高盛")
+            summary = focus.groupby("重點外資", as_index=False).agg(
+                買進張數=(buy_col,"sum"), 賣出張數=(sell_col,"sum"), 淨買賣超=("淨買賣超","sum")
+            )
+            st.dataframe(summary, hide_index=True, width="stretch")
+            if stock_col:
+                st.subheader("重點外資個股進出")
+                cols=[x for x in [code_col,stock_col,broker_col,buy_col,sell_col,"淨買賣超",price_col] if x]
+                st.dataframe(focus.sort_values("淨買賣超",ascending=False)[cols], hide_index=True, width="stretch")
+            st.subheader("全部外資券商資料")
+            st.dataframe(foreign, hide_index=True, width="stretch")
+        else:
+            st.error("CSV 至少需要券商名稱、買進張數、賣出張數欄位。")
+    else:
+        st.info("外資券商分頁已建立。匯入分點資料後會自動抓出摩根大通、美林與高盛，計算買進、賣出與淨買賣超。")
 
 with tab_futures:
     st.header("📈 期貨市場")
