@@ -7,6 +7,36 @@ st.caption("用每日分點買進／賣出張數與均價，推估券商分點�
 
 st.warning("公開分點資料代表該券商分點彙總交易，不等於單一主力或單一投資人的真實持倉。成本為研究用推估值。")
 
+st.subheader("🔥 券商買賣前 10 名股票")
+rank_file = st.file_uploader("上傳券商買賣排行 CSV（可選）", type=["csv"], key="rank_file")
+if rank_file:
+    rank = pd.read_csv(rank_file)
+    buy_col = next((x for x in ["買超張數","買超","淨買超","買賣超"] if x in rank.columns), None)
+    sell_col = next((x for x in ["賣超張數","賣超","淨賣超"] if x in rank.columns), None)
+    name_col = next((x for x in ["股票名稱","名稱","股票"] if x in rank.columns), None)
+    code_col = next((x for x in ["股票代號","代號"] if x in rank.columns), None)
+    if name_col and buy_col:
+        rank[buy_col] = pd.to_numeric(rank[buy_col], errors="coerce").fillna(0)
+        top_buy = rank.nlargest(10, buy_col)
+        left, right = st.columns(2)
+        with left:
+            st.markdown("#### 🟢 買超前 10 名")
+            cols = [x for x in [code_col,name_col,buy_col] if x]
+            st.dataframe(top_buy[cols], hide_index=True, width="stretch")
+        with right:
+            st.markdown("#### 🔴 賣超前 10 名")
+            if sell_col:
+                rank[sell_col] = pd.to_numeric(rank[sell_col], errors="coerce").fillna(0)
+                top_sell = rank.nlargest(10, sell_col)
+            else:
+                top_sell = rank.nsmallest(10, buy_col)
+            cols = [x for x in [code_col,name_col,sell_col or buy_col] if x]
+            st.dataframe(top_sell[cols], hide_index=True, width="stretch")
+    else:
+        st.info("排行 CSV 至少需要「股票名稱」與「買超／買超張數」欄位。")
+else:
+    st.caption("此區已預留在首頁最上方；接上可合法使用的排行資料來源後，可自動顯示每日買超／賣超前 10 名。")
+
 with st.sidebar:
     st.header("輸入資料")
     stock = st.text_input("股票代號", "3189")
