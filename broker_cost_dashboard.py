@@ -44,7 +44,8 @@ else:
 with st.sidebar:
     st.header("輸入資料")
     stock = st.text_input("股票代號", "3189")
-    window = st.selectbox("追蹤區間", [5, 10, 20, 60], index=2)\n        method = st.selectbox("成本法", ["移動平均成本法"])
+    window = st.selectbox("追蹤區間", [5, 10, 20, 60], index=2)
+method = st.selectbox("成本法", ["移動平均成本法"])
     uploaded = st.file_uploader("上傳分點每日資料 CSV", type=["csv"])
     st.markdown("CSV 欄位：日期、券商分點、買進張數、買進均價、賣出張數、賣出均價")
 
@@ -70,13 +71,18 @@ if uploaded:
     if missing:
         st.error("缺少欄位："+"、".join(missing))
     else:
-        df["日期"]=pd.to_datetime(df["日期"])\n            max_date=df["日期"].max()\n            trading_dates=sorted(df["日期"].drop_duplicates())\n            keep_dates=trading_dates[-int(window):]\n            df=df[df["日期"].isin(keep_dates)].copy()
+        df["日期"]=pd.to_datetime(df["日期"])
+max_date=df["日期"].max()
+trading_dates=sorted(df["日期"].drop_duplicates())
+keep_dates=trading_dates[-int(window):]
+df=df[df["日期"].isin(keep_dates)].copy()
         for x in need[2:]: df[x]=pd.to_numeric(df[x],errors="coerce").fillna(0)
         result=moving_average(df)
         current=st.number_input("目前股價（用於計算成本乖離）",min_value=0.0,value=0.0,step=0.5)
         if current>0:
             result["股價距成本(%)"]=result["估算平均成本"].apply(lambda x:(current/x-1)*100 if x>0 else 0)
-        result["淨買超張數"]=result["累積買進"]-result["累積賣出"]\n            result["動向"]=result["淨買超張數"].apply(lambda x:"🟢 加碼" if x>0 else ("🔴 減碼" if x<0 else "⚪ 持平"))
+        result["淨買超張數"]=result["累積買進"]-result["累積賣出"]
+result["動向"]=result["淨買超張數"].apply(lambda x:"🟢 加碼" if x>0 else ("🔴 減碼" if x<0 else "⚪ 持平"))
         if current > 0:
             result["交易訊號"] = result.apply(
                 lambda r: (
@@ -85,7 +91,8 @@ if uploaded:
                     else ("🟠 風險退出" if r["估算平均成本"] > 0 and current <= r["估算平均成本"] * 0.95 and r["淨買超張數"] < 0
                     else "⚪ 觀察"))
                 ), axis=1
-            )\n            result=result.sort_values("估算剩餘張數",ascending=False)
+            )
+result=result.sort_values("估算剩餘張數",ascending=False)
         c1,c2,c3=st.columns(3)
         c1.metric("追蹤股票",stock)
         c2.metric(f"近 {window} 日追蹤分點",len(result))
