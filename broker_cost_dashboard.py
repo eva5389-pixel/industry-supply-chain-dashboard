@@ -3,7 +3,7 @@ import streamlit as st
 
 st.set_page_config(page_title="券商分點成本追蹤", page_icon="🏦", layout="wide")
 st.title("📊 籌碼與期貨市場追蹤儀表板")
-tab_broker, tab_foreign, tab_futures, tab_pelosi = st.tabs(["🏦 券商分點", "🌍 外資券商", "📈 期貨市場", "🏛️ Pelosi 持股"])
+tab_broker, tab_foreign, tab_futures, tab_pelosi, tab_mops = st.tabs(["🏦 券商分點", "🌍 外資券商", "📈 期貨市場", "🏛️ Pelosi 持股", "📢 台股重大訊息"])
 
 with tab_broker:
     st.header("台股券商分點成本追蹤")    
@@ -199,4 +199,22 @@ with tab_pelosi:
     - **選擇權**：履約價不是完整持股成本；完整成本還需要權利金、合約數與後續行權資訊，因此另外標示。
     - **申報金額為區間**：同時保留下限與上限，避免把中位數誤認為實際成交金額。
     - **披露有時間落差**：此頁呈現的是已公開申報資訊，不代表即時持倉。
+    """)
+
+
+with tab_mops:
+    st.header("📢 台股重大訊息")
+    st.caption("資料來源：臺灣證券交易所／櫃買中心公開資訊觀測站（MOPS）。")
+    st.link_button("開啟公開資訊觀測站", "https://mops.twse.com.tw/mops/web/index")
+    q = st.text_input("快速篩選股票代號／公司名稱／關鍵字", key="mops_query")
+    st.info("此分頁已建立。下一步接入官方可用資料介面後，會在此顯示即時／當日重大訊息，並支援公司與關鍵字篩選。")
+    st.markdown("""
+    **預計特別標示的事件：**
+    - 🔥 營收／獲利／財測重大變動
+    - 💰 股利、庫藏股、現增／私募
+    - 🏭 重大訂單、資本支出、投資與處分資產
+    - 🤝 併購、策略合作、轉投資
+    - ⚠️ 訴訟、處分、停工、災害、財務或交易異常
+    - 👔 董事長／總經理等重要人事異動
+    - 🗓️ 法說會、董事會與重大決議
     """)
