@@ -237,12 +237,52 @@ with tab_pelosi:
     """)
 
 
+@st.cache_data(ttl=300)
+def fetch_twse_material_news():
+    url = "https://openapi.twse.com.tw/v1/opendata/t187ap04_L"
+    try:
+        r = requests.get(url, timeout=12, headers={"User-Agent":"Mozilla/5.0"})
+        r.raise_for_status()
+        data = r.json()
+        return pd.DataFrame(data) if isinstance(data, list) else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+def classify_material_news(text):
+    s = str(text)
+    rules = [
+        ("🔥 營運/財務", ["營收","獲利","盈餘","財測","損益","EPS"]),
+        ("💰 股東權益", ["股利","配息","庫藏股","現金增資","私募","減資"]),
+        ("🏭 訂單/投資", ["訂單","資本支出","取得資產","處分資產","投資"]),
+        ("🤝 併購/合作", ["併購","合併","收購","策略合作","股份交換"]),
+        ("⚠️ 風險事件", ["訴訟","裁罰","停工","火災","災害","違約","異常"]),
+        ("👔 人事異動", ["董事長","總經理","發言人","人事異動"]),
+        ("🗓️ 法說/董事會", ["法人說明會","法說會","董事會","重大決議"]),
+    ]
+    for label, keys in rules:
+        if any(k in s for k in keys):
+            return label
+    return "📌 其他重大訊息"
+
 with tab_mops:
     st.header("📢 台股重大訊息")
     st.caption("資料來源：臺灣證券交易所／櫃買中心公開資訊觀測站（MOPS）。")
     st.link_button("開啟公開資訊觀測站", "https://mops.twse.com.tw/mops/web/index")
     q = st.text_input("快速篩選股票代號／公司名稱／關鍵字", key="mops_query")
-    st.info("此分頁已建立。下一步接入官方可用資料介面後，會在此顯示即時／當日重大訊息，並支援公司與關鍵字篩選。")
+    if st.button("🔄 更新重大訊息", key="refresh_mops"):
+        fetch_twse_material_news.clear()
+    news = fetch_twse_material_news()
+    if not news.empty:
+        text_cols = news.select_dtypes(include="object").columns.tolist()
+        news["事件分類"] = news[text_cols].astype(str).agg(" ".join, axis=1).apply(classify_material_news)
+        if q:
+            mask = news.astype(str).apply(lambda col: col.str.contains(q, case=False, na=False)).any(axis=1)
+            news = news[mask]
+        st.success(f"已自動取得 TWSE 每日重大訊息，共 {len(news)} 筆符合條件")
+        preferred = [x for x in ["出表日期","發言日期","發言時間","公司代號","公司名稱","主旨","事件分類"] if x in news.columns]
+        st.dataframe(news[preferred] if preferred else news, hide_index=True, width="stretch")
+    else:
+        st.warning("目前未能取得 TWSE OpenAPI 重大訊息；可使用上方 MOPS 官方連結查詢。")
     st.markdown("""
     **預計特別標示的事件：**
     - 🔥 營收／獲利／財測重大變動
