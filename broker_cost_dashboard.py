@@ -1,5 +1,7 @@
 import pandas as pd
 import streamlit as st
+import requests
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="券商分點成本追蹤", page_icon="🏦", layout="wide")
 st.title("📊 籌碼與期貨市場追蹤儀表板")
@@ -149,9 +151,35 @@ with tab_foreign:
     else:
         st.info("外資券商分頁已建立。匯入分點資料後會自動抓出摩根大通、美林與高盛，計算買進、賣出與淨買賣超。")
 
+@st.cache_data(ttl=900)
+def fetch_taifex_institutional():
+    """讀取期交所三大法人期貨未平倉；失敗時回傳空表，不讓整個 App 掛掉。"""
+    url = "https://www.taifex.com.tw/cht/3/futContractsDate"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        tables = pd.read_html(requests.get(url, headers=headers, timeout=12).text)
+        frames = []
+        for t in tables:
+            flat = [" ".join(map(str, x)) if isinstance(x, tuple) else str(x) for x in t.columns]
+            t.columns = flat
+            joined = " ".join(flat) + " " + t.astype(str).to_string(index=False)
+            if "外資" in joined and "未平倉" in joined:
+                frames.append(t)
+        return frames[0] if frames else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
 with tab_futures:
     st.header("📈 期貨市場")
-    st.caption("追蹤台指期、微台、電子期、金融期與海外主要期貨；可匯入每日行情與法人籌碼資料。")
+    st.caption("追蹤台指期、微台、電子期、金融期與海外主要期貨；優先自動讀取期交所官方三大法人資料。")
+    if st.button("🔄 更新期交所法人資料", key="refresh_taifex"):
+        fetch_taifex_institutional.clear()
+    auto_fut = fetch_taifex_institutional()
+    if not auto_fut.empty:
+        st.success("已取得期交所官方三大法人期貨資料")
+        st.dataframe(auto_fut, hide_index=True, width="stretch")
+    else:
+        st.warning("目前未能自動取得期交所表格；仍可使用下方 CSV 備援，不影響其他分頁。")
     futures_file = st.file_uploader("上傳期貨行情／籌碼 CSV", type=["csv"], key="futures_file")
     if futures_file:
         fut = pd.read_csv(futures_file)
