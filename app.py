@@ -1078,28 +1078,34 @@ best_return = float(sector_daily.iloc[0]) if not sector_daily.empty else None
 page_labels = ["🌐 全部總覽"]
 label_to_sector = {"🌐 全部總覽": None}
 
-# 將新加入的高階 PCB 固定在選單前方，避免埋在數十個板塊中不易找到。
-featured_sector = "高階PCB"
-if featured_sector in supply_chains:
-  featured_label = f"🆕 {featured_sector}（{len(supply_chains[featured_sector])} 家）"
-  page_labels.append(featured_label)
-  label_to_sector[featured_label] = featured_sector
+# 將近期新增的重要板塊固定在選單前方，避免埋在數十個板塊中不易找到。
+featured_sectors = ["功率元件", "高階PCB"]
+featured_labels = {}
+for featured_sector in featured_sectors:
+  if featured_sector in supply_chains:
+    featured_label = f"🆕 {featured_sector}（{len(supply_chains[featured_sector])} 家）"
+    featured_labels[featured_sector] = featured_label
+    page_labels.append(featured_label)
+    label_to_sector[featured_label] = featured_sector
 
 for name in supply_chains.keys():
   sector = clean_category_label(name)
-  if sector == featured_sector:
+  if sector in featured_sectors:
     continue
   label = f"👑 {sector}" if sector == best_sector else sector
   page_labels.append(label)
   label_to_sector[label] = sector
 
-# 舊工作階段會保留原選項；每個導覽版本首次載入時主動帶到新增板塊。
-sector_nav_version = "20260908-high-end-pcb-v2"
+# 舊工作階段會保留原選項；每個導覽版本首次載入時主動帶到功率元件板塊。
+sector_nav_version = "20260922-power-components-v1"
 if st.session_state.get("sector_nav_version") != sector_nav_version:
-  st.session_state["sector_page"] = featured_label
+  st.session_state["sector_page"] = featured_labels.get("功率元件", "🌐 全部總覽")
   st.session_state["sector_nav_version"] = sector_nav_version
 
-st.info("🆕 已新增「高階PCB」板塊，共 13 家台灣、日本、美國與中國供應鏈公司。")
+st.info(
+    f"🆕 已新增「功率元件」板塊，共 {len(supply_chains.get('功率元件', []))} 家供應鏈公司，"
+    "涵蓋 SiC／GaN／IGBT／MOSFET、晶圓磊晶、功率模組，以及資料中心與電動車應用。"
+)
 selected_label = st.selectbox("📑 產業板塊分頁", page_labels, key="sector_page")
 selected_page = label_to_sector[selected_label]
 if best_sector is not None:
