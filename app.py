@@ -1306,15 +1306,19 @@ if selected_label == "📊 族群觀察":
       detail["本益比來源／日期"] = detail["代碼"].map(
           lambda ticker: f"{official_pe[ticker][1]} {official_pe[ticker][2]}" if ticker in official_pe else "未提供")
       pe_values = [official_pe[ticker][0] for ticker in detail["代碼"] if ticker in official_pe]
-      if len(pe_values) >= 3:
+      if len(pe_values) >= 2:
         peer_median = float(pd.Series(pe_values).median())
         detail["估值觀察"] = detail["代碼"].map(
             lambda ticker: ("高於本組中位數" if official_pe[ticker][0] > peer_median
                             else "低於本組中位數" if official_pe[ticker][0] < peer_median
-                            else "接近本組中位數") if ticker in official_pe else "資料不足")
-        st.caption(f"本組有本益比資料的 {len(pe_values)} 檔，中位數 {peer_median:.2f} 倍。公司業務、獲利週期不同，這不是便宜或昂貴的判定。")
+                            else "接近本組中位數") if ticker in official_pe else "本益比未提供")
+        sample_note = "僅兩檔，參考性較低；" if len(pe_values) == 2 else ""
+        st.caption(f"本組有本益比資料的 {len(pe_values)} 檔，中位數 {peer_median:.2f} 倍。{sample_note}公司業務、獲利週期不同，不代表便宜或昂貴。")
+      elif len(pe_values) == 1:
+        detail["估值觀察"] = detail["代碼"].map(
+            lambda ticker: "僅一檔，無同組比較" if ticker in official_pe else "本益比未提供")
       else:
-        detail["估值觀察"] = "同組有效資料不足"
+        detail["估值觀察"] = "本益比未提供"
     display_detail = detail.copy()
     display_detail["當日漲跌幅(%)"] = display_detail["當日漲跌幅(%)"].map(
         lambda value: f"{value:.2f}%" if pd.notna(value) else "—")
