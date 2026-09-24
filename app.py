@@ -1,4 +1,5 @@
 import re
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from io import BytesIO
@@ -1197,6 +1198,39 @@ def fetch_observation_history(tickers):
         continue
   return pd.DataFrame(rows, columns=["代碼", "近5日漲跌幅(%)", "量比(20日)", "行情日期"])
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_official_taiwan_pe():
+  """Latest published TWSE/TPEx P/E; blank values mean no valid positive EPS."""
+  result = {}
+  sources = (
+      ("https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL", ".TW", "Code", "PEratio", "證交所"),
+      ("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis", ".TWO",
+       "SecuritiesCompanyCode", "PriceEarningRatio", "櫃買中心"),
+  )
+  for url, suffix, code_key, pe_key, source in sources:
+    try:
+      response = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+      response.raise_for_status()
+      records = response.json()
+      if not isinstance(records, list):
+        continue
+      for record in records:
+        code = str(record.get(code_key, "")).strip()
+        raw = str(record.get(pe_key, "")).replace(",", "").strip()
+        if not code:
+          continue
+        try:
+          value = float(raw)
+          if value <= 0:
+            continue
+        except (TypeError, ValueError):
+          continue
+        date = str(record.get("Date") or record.get("DateOfTrade") or "").strip()
+        result[code + suffix] = (round(value, 2), source, date)
+    except Exception:
+      continue
+  return result
+
 if selected_label == "📊 族群觀察":
   st.subheader("📊 族群觀察｜業績、估值與量價")
   observation_sector = st.selectbox("選擇觀察族群", list(supply_chains), key="observation_sector")
@@ -1220,19 +1254,21 @@ if selected_label == "📊 族群觀察":
     detail = valid[["股票名稱", "代碼", "漲跌幅數值"]].rename(
         columns={"漲跌幅數值": "當日漲跌幅(%)"}).merge(history, on="代碼", how="left")
     if show_pe:
-      with st.spinner("載入本益比..."):
-        pe = fetch_trailing_pe(tuple(valid["代碼"]))
-      detail["近四季本益比"] = detail["代碼"].map(pe)
+      with st.spinner("從證交所與櫃買中心載入本益比..."):
+        official_pe = fetch_official_taiwan_pe()
+      detail["近四季本益比"] = detail["代碼"].map(
+          lambda ticker: f"{official_pe[ticker][0]:.2f}" if ticker in official_pe else "—")
+      detail["本益比來源／日期"] = detail["代碼"].map(
+          lambda ticker: f"{official_pe[ticker][1]} {official_pe[ticker][2]}" if ticker in official_pe else "未提供")
     st.dataframe(detail, hide_index=True, width="stretch",
                  column_config={
                      "當日漲跌幅(%)": st.column_config.NumberColumn(format="%.2f%%"),
                      "近5日漲跌幅(%)": st.column_config.NumberColumn(format="%.2f%%"),
                      "量比(20日)": st.column_config.NumberColumn(format="%.2f 倍"),
-                     "近四季本益比": st.column_config.NumberColumn(format="%.2f 倍"),
                  })
     st.caption("量比＝最新交易日成交量 ÷ 之前20個交易日平均量；近5日使用調整後收盤價。缺資料顯示空白，不以 0 代替。不同市場的行情日期可能不同。")
   st.markdown("#### 業績與估值核對")
-  st.write("每月追月營收年增率與近三個月累計變化；每季追毛利率、營益率、EPS 與營業現金流。勾選後顯示的本益比為近四季歷史值，不是未來獲利預測。")
+  st.write("每月追月營收年增率與近三個月累計變化；每季追毛利率、營益率、EPS 與營業現金流。勾選後顯示台股交易所公布的歷史本益比；海外股或無正數獲利、來源未提供者顯示「—」。")
   st.markdown("[公開資訊觀測站：月營收、財報、法說及重大訊息](https://mops.twse.com.tw/)　｜　[證交所：個股日成交資訊](https://www.twse.com.tw/zh/trading/historical/stock-day.html)　｜　[櫃買中心：上櫃行情](https://www.tpex.org.tw/)")
   st.stop()
 
