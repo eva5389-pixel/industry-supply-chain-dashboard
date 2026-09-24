@@ -1038,7 +1038,7 @@ if st.sidebar.button("🔄 重新整理即時股價"):
   st.cache_data.clear()
 
 with st.spinner("正在從 Yahoo Finance 抓取最新跨國股價數據，請稍候..."):
-  df_stocks = fetch_stock_data("20260918-cybersecurity-visible-v4")
+  df_stocks = fetch_stock_data("20260924-probe-cards-v1")
   if not df_stocks.empty:
     df_stocks["產業板塊"] = df_stocks["產業板塊"].map(clean_category_label)
 
