@@ -1163,39 +1163,56 @@ st.info(
 selected_label = st.selectbox("📑 產業板塊分頁", page_labels, key="sector_page")
 selected_page = label_to_sector[selected_label]
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_observation_history(tickers):
-  """Batch-load only the selected sector; omit missing quotes instead of retrying serially."""
+  """Batch-load selected symbols and retry only missing rows concurrently."""
   symbols = [ticker for ticker in dict.fromkeys(tickers) if ticker != "未上市"]
-  rows = []
-  for start in range(0, len(symbols), 25):
-    chunk = symbols[start:start + 25]
+  histories = {}
+  for start in range(0, len(symbols), 20):
+    chunk = symbols[start:start + 20]
     try:
       batch = yf.download(chunk, period="2mo", interval="1d",
                           group_by="ticker", auto_adjust=True,
-                          progress=False, threads=True, timeout=15)
+                          progress=False, threads=True, timeout=10)
+      for ticker in chunk:
+        if isinstance(batch.columns, pd.MultiIndex) and ticker in batch.columns.get_level_values(0):
+          histories[ticker] = batch[ticker]
+        elif len(chunk) == 1 and "Close" in batch:
+          histories[ticker] = batch
     except Exception:
       continue
-    for ticker in chunk:
-      try:
-        if isinstance(batch.columns, pd.MultiIndex) and ticker in batch.columns.get_level_values(0):
-          history = batch[ticker]
-        elif len(chunk) == 1 and "Close" in batch:
-          history = batch
-        else:
-          continue
-        closes = pd.to_numeric(history["Close"], errors="coerce").dropna()
-        volumes = pd.to_numeric(history["Volume"], errors="coerce").dropna()
-        if closes.empty:
-          continue
-        five_day = (closes.iloc[-1] / closes.iloc[-6] - 1) * 100 if len(closes) >= 6 and closes.iloc[-6] > 0 else None
-        prior_volume = volumes.iloc[-21:-1]
-        volume_ratio = (float(volumes.iloc[-1]) / prior_volume.mean()
-                        if len(prior_volume) == 20 and prior_volume.mean() > 0 else None)
-        rows.append({"代碼": ticker, "近5日漲跌幅(%)": five_day, "量比(20日)": volume_ratio,
-                     "行情日期": closes.index[-1].strftime("%Y-%m-%d")})
-      except Exception:
+
+  def retry_one(ticker):
+    try:
+      return ticker, yf.Ticker(ticker).history(period="2mo", auto_adjust=True, timeout=8)
+    except Exception:
+      return ticker, pd.DataFrame()
+
+  missing = [ticker for ticker in symbols
+             if ticker not in histories or histories[ticker].empty
+             or "Close" not in histories[ticker]
+             or pd.to_numeric(histories[ticker]["Close"], errors="coerce").dropna().empty]
+  if missing:
+    with ThreadPoolExecutor(max_workers=4) as executor:
+      for ticker, history in executor.map(retry_one, missing):
+        if not history.empty:
+          histories[ticker] = history
+
+  rows = []
+  for ticker, history in histories.items():
+    try:
+      closes = pd.to_numeric(history["Close"], errors="coerce").dropna()
+      volumes = pd.to_numeric(history["Volume"], errors="coerce").dropna()
+      if closes.empty:
         continue
+      five_day = (closes.iloc[-1] / closes.iloc[-6] - 1) * 100 if len(closes) >= 6 and closes.iloc[-6] > 0 else None
+      prior_volume = volumes.iloc[-21:-1]
+      volume_ratio = (float(volumes.iloc[-1]) / prior_volume.mean()
+                      if len(prior_volume) == 20 and prior_volume.mean() > 0 else None)
+      rows.append({"代碼": ticker, "近5日漲跌幅(%)": five_day, "量比(20日)": volume_ratio,
+                   "行情日期": closes.index[-1].strftime("%Y-%m-%d")})
+    except Exception:
+      continue
   return pd.DataFrame(rows, columns=["代碼", "近5日漲跌幅(%)", "量比(20日)", "行情日期"])
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -1279,6 +1296,8 @@ if selected_label == "📊 族群觀察":
         return "量縮；方向待確認"
       return "量價尚無明確訊號"
     detail["量價判讀"] = detail.apply(read_price_volume, axis=1)
+    if history.empty:
+      st.warning("Yahoo 量價資料目前未回傳；近5日漲跌幅與量比暫時無法判讀，稍後可按左側重新整理。")
     if show_pe:
       with st.spinner("從證交所與櫃買中心載入本益比..."):
         official_pe = fetch_official_taiwan_pe()
@@ -1296,12 +1315,15 @@ if selected_label == "📊 族群觀察":
         st.caption(f"本組有本益比資料的 {len(pe_values)} 檔，中位數 {peer_median:.2f} 倍。公司業務、獲利週期不同，這不是便宜或昂貴的判定。")
       else:
         detail["估值觀察"] = "同組有效資料不足"
-    st.dataframe(detail, hide_index=True, width="stretch",
-                 column_config={
-                     "當日漲跌幅(%)": st.column_config.NumberColumn(format="%.2f%%"),
-                     "近5日漲跌幅(%)": st.column_config.NumberColumn(format="%.2f%%"),
-                     "量比(20日)": st.column_config.NumberColumn(format="%.2f 倍"),
-                 })
+    display_detail = detail.copy()
+    display_detail["當日漲跌幅(%)"] = display_detail["當日漲跌幅(%)"].map(
+        lambda value: f"{value:.2f}%" if pd.notna(value) else "—")
+    display_detail["近5日漲跌幅(%)"] = display_detail["近5日漲跌幅(%)"].map(
+        lambda value: f"{value:.2f}%" if pd.notna(value) else "—")
+    display_detail["量比(20日)"] = display_detail["量比(20日)"].map(
+        lambda value: f"{value:.2f} 倍" if pd.notna(value) else "—")
+    display_detail["行情日期"] = display_detail["行情日期"].fillna("—")
+    st.dataframe(display_detail, hide_index=True, width="stretch")
     st.caption("量比＝最新交易日成交量 ÷ 之前20個交易日平均量；近5日使用調整後收盤價。判讀是觀察標記，不是買賣訊號；缺資料顯示空白。不同市場的行情日期可能不同。")
   st.markdown("#### 業績與估值核對")
   st.write("每月追月營收年增率與近三個月累計變化；每季追毛利率、營益率、EPS 與營業現金流。歷史本益比只顯示估值倍數，不能單憑高低判斷便宜或昂貴；還需對照獲利成長、景氣階段與同業。無資料顯示「—」。")
