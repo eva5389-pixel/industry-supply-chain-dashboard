@@ -1119,8 +1119,8 @@ eligible_declines = sector_daily[
 worst_sector = eligible_declines.index[-1] if not eligible_declines.empty else None
 worst_return = float(eligible_declines.iloc[-1]) if worst_sector is not None else None
 
-page_labels = ["🌐 全部總覽"]
-label_to_sector = {"🌐 全部總覽": None}
+page_labels = ["🌐 全部總覽", "📊 族群觀察"]
+label_to_sector = {"🌐 全部總覽": None, "📊 族群觀察": None}
 if worst_sector is not None:
   page_labels.append("📉 跌幅最多族群")
   label_to_sector["📉 跌幅最多族群"] = worst_sector
@@ -1155,6 +1155,68 @@ st.info(
 )
 selected_label = st.selectbox("📑 產業板塊分頁", page_labels, key="sector_page")
 selected_page = label_to_sector[selected_label]
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_observation_history(tickers):
+  """Selected sector only: adjusted closes and turnover for 20-session volume baseline."""
+  rows = []
+  for ticker in dict.fromkeys(tickers):
+    if ticker == "未上市":
+      continue
+    try:
+      history = yf.Ticker(ticker).history(period="2mo", auto_adjust=True)
+      closes = pd.to_numeric(history["Close"], errors="coerce").dropna()
+      volumes = pd.to_numeric(history["Volume"], errors="coerce").dropna()
+      if closes.empty:
+        continue
+      # 五個交易日報酬需以五日前收盤價為基準，至少六個收盤點。
+      five_day = (closes.iloc[-1] / closes.iloc[-6] - 1) * 100 if len(closes) >= 6 and closes.iloc[-6] > 0 else None
+      # 昨日以前的20個交易日平均量，避免今日量稀釋自身量比。
+      prior_volume = volumes.iloc[-21:-1]
+      volume_ratio = (float(volumes.iloc[-1]) / prior_volume.mean()
+                      if len(prior_volume) == 20 and prior_volume.mean() > 0 else None)
+      rows.append({"代碼": ticker, "近5日漲跌幅(%)": five_day, "量比(20日)": volume_ratio,
+                   "行情日期": closes.index[-1].strftime("%Y-%m-%d")})
+    except Exception:
+      continue
+  return pd.DataFrame(rows, columns=["代碼", "近5日漲跌幅(%)", "量比(20日)", "行情日期"])
+
+if selected_label == "📊 族群觀察":
+  st.subheader("📊 族群觀察｜業績、估值與量價")
+  observation_sector = st.selectbox("選擇觀察族群", list(supply_chains), key="observation_sector")
+  watched = df_stocks[df_stocks["產業板塊"] == clean_category_label(observation_sector)].copy()
+  valid = watched[watched["資料狀態"].eq("正常")].copy()
+  if valid.empty:
+    st.warning("這個族群目前沒有可計算的正常行情；公司清單仍可在原板塊分頁查看。")
+  else:
+    gainers = int((valid["漲跌幅數值"] > 0).sum())
+    count = len(valid)
+    median = float(valid["漲跌幅數值"].median())
+    mean = float(valid["漲跌幅數值"].mean())
+    a, b, d = st.columns(3)
+    a.metric("上漲家數／有效家數", f"{gainers}／{count}", f"{gainers / count:.0%}")
+    b.metric("族群漲跌幅中位數", f"{median:+.2f}%")
+    d.metric("族群平均漲跌幅", f"{mean:+.2f}%")
+    st.caption("以有正常行情的公司等權計算；同一公司在不同族群可重複出現。")
+    with st.spinner("載入本族群近兩個月量價與估值..."):
+      history = fetch_observation_history(tuple(valid["代碼"]))
+      pe = fetch_trailing_pe(tuple(valid["代碼"]))
+    detail = valid[["股票名稱", "代碼", "漲跌幅數值"]].rename(
+        columns={"漲跌幅數值": "當日漲跌幅(%)"}).merge(history, on="代碼", how="left")
+    detail["近四季本益比"] = detail["代碼"].map(pe)
+    st.dataframe(detail, hide_index=True, width="stretch",
+                 column_config={
+                     "當日漲跌幅(%)": st.column_config.NumberColumn(format="%.2f%%"),
+                     "近5日漲跌幅(%)": st.column_config.NumberColumn(format="%.2f%%"),
+                     "量比(20日)": st.column_config.NumberColumn(format="%.2f 倍"),
+                     "近四季本益比": st.column_config.NumberColumn(format="%.2f 倍"),
+                 })
+    st.caption("量比＝最新交易日成交量 ÷ 之前20個交易日平均量；近5日使用調整後收盤價。缺資料顯示空白，不以 0 代替。不同市場的行情日期可能不同。")
+  st.markdown("#### 業績與估值核對")
+  st.write("每月追月營收年增率與近三個月累計變化；每季追毛利率、營益率、EPS 與營業現金流。上表本益比為近四季歷史值，不是未來獲利預測。")
+  st.markdown("[公開資訊觀測站：月營收、財報、法說及重大訊息](https://mops.twse.com.tw/)　｜　[證交所：個股日成交資訊](https://www.twse.com.tw/zh/trading/historical/stock-day.html)　｜　[櫃買中心：上櫃行情](https://www.tpex.org.tw/)")
+  st.stop()
+
 if best_sector is not None:
   st.success(f"👑 今日平均漲幅最高板塊：{best_sector}（{best_return:+.2f}%）")
 if worst_sector is not None:
