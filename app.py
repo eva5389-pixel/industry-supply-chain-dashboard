@@ -1111,9 +1111,19 @@ normal_quotes = df_stocks[df_stocks["資料狀態"].eq("正常")].copy()
 sector_daily = normal_quotes.groupby("產業板塊")["漲跌幅數值"].mean().sort_values(ascending=False)
 best_sector = sector_daily.index[0] if not sector_daily.empty else None
 best_return = float(sector_daily.iloc[0]) if not sector_daily.empty else None
+# 至少兩檔有正常行情，避免單一缺漏報價扭曲板塊排名。
+sector_counts = normal_quotes.groupby("產業板塊")["代碼"].nunique()
+eligible_declines = sector_daily[
+    (sector_daily < 0) & (sector_counts.reindex(sector_daily.index).fillna(0) >= 2)
+]
+worst_sector = eligible_declines.index[-1] if not eligible_declines.empty else None
+worst_return = float(eligible_declines.iloc[-1]) if worst_sector is not None else None
 
 page_labels = ["🌐 全部總覽"]
 label_to_sector = {"🌐 全部總覽": None}
+if worst_sector is not None:
+  page_labels.append("📉 跌幅最多族群")
+  label_to_sector["📉 跌幅最多族群"] = worst_sector
 
 # 將近期新增的重要板塊固定在選單前方，避免埋在數十個板塊中不易找到。
 featured_sectors = ["特用化學／半導體化學品", "連接器／高速傳輸", "AI眼鏡", "線上遊戲主題", "探針卡供應鏈", "功率元件", "高階PCB"]
@@ -1147,13 +1157,17 @@ selected_label = st.selectbox("📑 產業板塊分頁", page_labels, key="secto
 selected_page = label_to_sector[selected_label]
 if best_sector is not None:
   st.success(f"👑 今日平均漲幅最高板塊：{best_sector}（{best_return:+.2f}%）")
+if worst_sector is not None:
+  st.info(f"📉 今日平均跌幅最多族群：{worst_sector}（{worst_return:+.2f}%；{int(sector_counts[worst_sector])} 檔有行情）")
+else:
+  st.info("📉 目前沒有至少兩檔有行情且平均下跌的族群。")
 
 if selected_page is None:
   page_df = df_stocks.copy()
   page_title = "所有產業板塊即時總覽"
 else:
   page_df = df_stocks[df_stocks["產業板塊"] == selected_page].copy()
-  page_title = f"{selected_page}｜板塊即時行情"
+  page_title = f"📉 跌幅最多族群：{selected_page}｜板塊即時行情" if selected_label == "📉 跌幅最多族群" else f"{selected_page}｜板塊即時行情"
 
 if selected_page is None:
   page_df["本益比"] = "選擇板塊後載入"
