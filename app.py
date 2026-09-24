@@ -910,6 +910,23 @@ def fetch_stock_data(cache_version):
       except Exception:
         continue
 
+  # 批次漏報的代碼並行補抓，避免數十檔各等15秒拖慢整頁。
+  missing = [ticker for ticker in tickers if len(close_by_ticker.get(ticker, pd.Series(dtype=float))) < 2]
+  def fetch_missing(ticker):
+    try:
+      single = yf.download(ticker, period="5d", interval="1d", auto_adjust=False,
+                           progress=False, threads=False, timeout=8)
+      close = single["Close"]
+      if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+      return ticker, pd.to_numeric(close, errors="coerce").dropna()
+    except Exception:
+      return ticker, pd.Series(dtype=float)
+  if missing:
+    with ThreadPoolExecutor(max_workers=6) as executor:
+      for ticker, close in executor.map(fetch_missing, missing):
+        close_by_ticker[ticker] = close
+
   results=[]
   for category,item in items:
     ticker=item["代碼"]
@@ -923,17 +940,6 @@ def fetch_stock_data(cache_version):
       continue
     try:
       close=close_by_ticker.get(ticker,pd.Series(dtype=float))
-      # Yahoo 的大量批次下載偶爾會漏掉台、日個股；缺漏時自動逐檔補抓。
-      if len(close) < 2:
-        single = yf.download(
-            ticker, period="5d", interval="1d", auto_adjust=False,
-            progress=False, threads=False, timeout=15,
-        )
-        if "Close" in single:
-          single_close = single["Close"]
-          if isinstance(single_close, pd.DataFrame):
-            single_close = single_close.iloc[:, 0]
-          close = pd.to_numeric(single_close, errors="coerce").dropna()
       if len(close)>=2:
         close_price=float(close.iloc[-1]); prev_close=float(close.iloc[-2])
         change=close_price-prev_close; pct_change=change/prev_close*100 if prev_close else 0.0
@@ -1065,7 +1071,7 @@ if st.sidebar.button("🔄 重新整理即時股價"):
   st.cache_data.clear()
 
 with st.spinner("正在從 Yahoo Finance 抓取最新跨國股價數據，請稍候..."):
-  df_stocks = fetch_stock_data("20260924-new-sectors-v1")
+  df_stocks = fetch_stock_data("20260924-parallel-fallback-v2")
   if not df_stocks.empty:
     df_stocks["產業板塊"] = df_stocks["產業板塊"].map(clean_category_label)
 
@@ -1158,27 +1164,37 @@ selected_page = label_to_sector[selected_label]
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_observation_history(tickers):
-  """Selected sector only: adjusted closes and turnover for 20-session volume baseline."""
+  """Batch-load only the selected sector; omit missing quotes instead of retrying serially."""
+  symbols = [ticker for ticker in dict.fromkeys(tickers) if ticker != "未上市"]
   rows = []
-  for ticker in dict.fromkeys(tickers):
-    if ticker == "未上市":
-      continue
+  for start in range(0, len(symbols), 25):
+    chunk = symbols[start:start + 25]
     try:
-      history = yf.Ticker(ticker).history(period="2mo", auto_adjust=True)
-      closes = pd.to_numeric(history["Close"], errors="coerce").dropna()
-      volumes = pd.to_numeric(history["Volume"], errors="coerce").dropna()
-      if closes.empty:
-        continue
-      # 五個交易日報酬需以五日前收盤價為基準，至少六個收盤點。
-      five_day = (closes.iloc[-1] / closes.iloc[-6] - 1) * 100 if len(closes) >= 6 and closes.iloc[-6] > 0 else None
-      # 昨日以前的20個交易日平均量，避免今日量稀釋自身量比。
-      prior_volume = volumes.iloc[-21:-1]
-      volume_ratio = (float(volumes.iloc[-1]) / prior_volume.mean()
-                      if len(prior_volume) == 20 and prior_volume.mean() > 0 else None)
-      rows.append({"代碼": ticker, "近5日漲跌幅(%)": five_day, "量比(20日)": volume_ratio,
-                   "行情日期": closes.index[-1].strftime("%Y-%m-%d")})
+      batch = yf.download(chunk, period="2mo", interval="1d",
+                          group_by="ticker", auto_adjust=True,
+                          progress=False, threads=True, timeout=15)
     except Exception:
       continue
+    for ticker in chunk:
+      try:
+        if isinstance(batch.columns, pd.MultiIndex) and ticker in batch.columns.get_level_values(0):
+          history = batch[ticker]
+        elif len(chunk) == 1 and "Close" in batch:
+          history = batch
+        else:
+          continue
+        closes = pd.to_numeric(history["Close"], errors="coerce").dropna()
+        volumes = pd.to_numeric(history["Volume"], errors="coerce").dropna()
+        if closes.empty:
+          continue
+        five_day = (closes.iloc[-1] / closes.iloc[-6] - 1) * 100 if len(closes) >= 6 and closes.iloc[-6] > 0 else None
+        prior_volume = volumes.iloc[-21:-1]
+        volume_ratio = (float(volumes.iloc[-1]) / prior_volume.mean()
+                        if len(prior_volume) == 20 and prior_volume.mean() > 0 else None)
+        rows.append({"代碼": ticker, "近5日漲跌幅(%)": five_day, "量比(20日)": volume_ratio,
+                     "行情日期": closes.index[-1].strftime("%Y-%m-%d")})
+      except Exception:
+        continue
   return pd.DataFrame(rows, columns=["代碼", "近5日漲跌幅(%)", "量比(20日)", "行情日期"])
 
 if selected_label == "📊 族群觀察":
@@ -1198,12 +1214,15 @@ if selected_label == "📊 族群觀察":
     b.metric("族群漲跌幅中位數", f"{median:+.2f}%")
     d.metric("族群平均漲跌幅", f"{mean:+.2f}%")
     st.caption("以有正常行情的公司等權計算；同一公司在不同族群可重複出現。")
-    with st.spinner("載入本族群近兩個月量價與估值..."):
+    with st.spinner("批次載入本族群量價..."):
       history = fetch_observation_history(tuple(valid["代碼"]))
-      pe = fetch_trailing_pe(tuple(valid["代碼"]))
+    show_pe = st.checkbox("載入近四季本益比（查詢較慢）", value=False)
     detail = valid[["股票名稱", "代碼", "漲跌幅數值"]].rename(
         columns={"漲跌幅數值": "當日漲跌幅(%)"}).merge(history, on="代碼", how="left")
-    detail["近四季本益比"] = detail["代碼"].map(pe)
+    if show_pe:
+      with st.spinner("載入本益比..."):
+        pe = fetch_trailing_pe(tuple(valid["代碼"]))
+      detail["近四季本益比"] = detail["代碼"].map(pe)
     st.dataframe(detail, hide_index=True, width="stretch",
                  column_config={
                      "當日漲跌幅(%)": st.column_config.NumberColumn(format="%.2f%%"),
@@ -1213,7 +1232,7 @@ if selected_label == "📊 族群觀察":
                  })
     st.caption("量比＝最新交易日成交量 ÷ 之前20個交易日平均量；近5日使用調整後收盤價。缺資料顯示空白，不以 0 代替。不同市場的行情日期可能不同。")
   st.markdown("#### 業績與估值核對")
-  st.write("每月追月營收年增率與近三個月累計變化；每季追毛利率、營益率、EPS 與營業現金流。上表本益比為近四季歷史值，不是未來獲利預測。")
+  st.write("每月追月營收年增率與近三個月累計變化；每季追毛利率、營益率、EPS 與營業現金流。勾選後顯示的本益比為近四季歷史值，不是未來獲利預測。")
   st.markdown("[公開資訊觀測站：月營收、財報、法說及重大訊息](https://mops.twse.com.tw/)　｜　[證交所：個股日成交資訊](https://www.twse.com.tw/zh/trading/historical/stock-day.html)　｜　[櫃買中心：上櫃行情](https://www.tpex.org.tw/)")
   st.stop()
 
