@@ -1247,12 +1247,38 @@ if selected_label == "📊 族群觀察":
     a.metric("上漲家數／有效家數", f"{gainers}／{count}", f"{gainers / count:.0%}")
     b.metric("族群漲跌幅中位數", f"{median:+.2f}%")
     d.metric("族群平均漲跌幅", f"{mean:+.2f}%")
-    st.caption("以有正常行情的公司等權計算；同一公司在不同族群可重複出現。")
+    st.caption("以有正常行情的公司等權計算；同一公司在不同族群可重複出現。不同市場可能不是同一交易日。")
+    breadth = gainers / count
+    if count < 3:
+      sector_read = "有效樣本少於3檔，暫不判定族群方向。"
+    elif breadth >= 0.65 and median > 0:
+      sector_read = "上漲家數占多數，且中位數為正：族群漲勢較廣。"
+    elif breadth <= 0.35 and median < 0:
+      sector_read = "上漲家數偏少，且中位數為負：族群普遍偏弱。"
+    else:
+      sector_read = "上漲比例與中位數尚未同時確認：偏個股輪動，暫難說整群轉強。"
+    st.info(f"族群判讀｜{sector_read}")
     with st.spinner("批次載入本族群量價..."):
       history = fetch_observation_history(tuple(valid["代碼"]))
     show_pe = st.checkbox("載入近四季本益比（查詢較慢）", value=False)
     detail = valid[["股票名稱", "代碼", "漲跌幅數值"]].rename(
         columns={"漲跌幅數值": "當日漲跌幅(%)"}).merge(history, on="代碼", how="left")
+    def read_price_volume(row):
+      today, five, ratio = row["當日漲跌幅(%)"], row["近5日漲跌幅(%)"], row["量比(20日)"]
+      if pd.isna(five) or pd.isna(ratio):
+        return "資料不足"
+      if today > 0 and ratio >= 1.5:
+        return "放量上漲；留意後續延續"
+      if today < 0 and ratio >= 1.5:
+        return "放量下跌；留意賣壓"
+      if today < 0 and five > 0:
+        return "五日上漲後回吐"
+      if today > 0 and five < 0:
+        return "五日下跌後反彈"
+      if ratio < 0.7:
+        return "量縮；方向待確認"
+      return "量價尚無明確訊號"
+    detail["量價判讀"] = detail.apply(read_price_volume, axis=1)
     if show_pe:
       with st.spinner("從證交所與櫃買中心載入本益比..."):
         official_pe = fetch_official_taiwan_pe()
@@ -1260,15 +1286,25 @@ if selected_label == "📊 族群觀察":
           lambda ticker: f"{official_pe[ticker][0]:.2f}" if ticker in official_pe else "—")
       detail["本益比來源／日期"] = detail["代碼"].map(
           lambda ticker: f"{official_pe[ticker][1]} {official_pe[ticker][2]}" if ticker in official_pe else "未提供")
+      pe_values = [official_pe[ticker][0] for ticker in detail["代碼"] if ticker in official_pe]
+      if len(pe_values) >= 3:
+        peer_median = float(pd.Series(pe_values).median())
+        detail["估值觀察"] = detail["代碼"].map(
+            lambda ticker: ("高於本組中位數" if official_pe[ticker][0] > peer_median
+                            else "低於本組中位數" if official_pe[ticker][0] < peer_median
+                            else "接近本組中位數") if ticker in official_pe else "資料不足")
+        st.caption(f"本組有本益比資料的 {len(pe_values)} 檔，中位數 {peer_median:.2f} 倍。公司業務、獲利週期不同，這不是便宜或昂貴的判定。")
+      else:
+        detail["估值觀察"] = "同組有效資料不足"
     st.dataframe(detail, hide_index=True, width="stretch",
                  column_config={
                      "當日漲跌幅(%)": st.column_config.NumberColumn(format="%.2f%%"),
                      "近5日漲跌幅(%)": st.column_config.NumberColumn(format="%.2f%%"),
                      "量比(20日)": st.column_config.NumberColumn(format="%.2f 倍"),
                  })
-    st.caption("量比＝最新交易日成交量 ÷ 之前20個交易日平均量；近5日使用調整後收盤價。缺資料顯示空白，不以 0 代替。不同市場的行情日期可能不同。")
+    st.caption("量比＝最新交易日成交量 ÷ 之前20個交易日平均量；近5日使用調整後收盤價。判讀是觀察標記，不是買賣訊號；缺資料顯示空白。不同市場的行情日期可能不同。")
   st.markdown("#### 業績與估值核對")
-  st.write("每月追月營收年增率與近三個月累計變化；每季追毛利率、營益率、EPS 與營業現金流。勾選後顯示台股交易所公布的歷史本益比；海外股或無正數獲利、來源未提供者顯示「—」。")
+  st.write("每月追月營收年增率與近三個月累計變化；每季追毛利率、營益率、EPS 與營業現金流。歷史本益比只顯示估值倍數，不能單憑高低判斷便宜或昂貴；還需對照獲利成長、景氣階段與同業。無資料顯示「—」。")
   st.markdown("[公開資訊觀測站：月營收、財報、法說及重大訊息](https://mops.twse.com.tw/)　｜　[證交所：個股日成交資訊](https://www.twse.com.tw/zh/trading/historical/stock-day.html)　｜　[櫃買中心：上櫃行情](https://www.tpex.org.tw/)")
   st.stop()
 
