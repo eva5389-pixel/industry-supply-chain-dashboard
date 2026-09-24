@@ -788,6 +788,16 @@ supply_chains = {
         {"名稱": "健鼎", "位置": "下游", "業務": "伺服器、記憶體、車用與多層PCB製造", "代碼": "3044.TW"},
         {"名稱": "華通", "位置": "下游", "業務": "HDI、高階PCB與消費電子電路板", "代碼": "2313.TW"},
     ],
+    "探針卡供應鏈": [
+        {"名稱": "旺矽", "位置": "中游", "業務": "懸臂式、垂直式與MEMS探針卡；晶圓測試介面", "代碼": "6223.TW"},
+        {"名稱": "中華精測", "位置": "中游", "業務": "探針卡、測試介面板及高階晶片測試方案", "代碼": "6510.TWO"},
+        {"名稱": "雍智科技", "位置": "中游", "業務": "探針卡、IC測試板與老化測試板", "代碼": "6683.TWO"},
+        {"名稱": "FormFactor", "位置": "中游", "業務": "晶圓測試探針卡與半導體測試設備", "代碼": "FORM"},
+        {"名稱": "Micronics Japan", "位置": "中游", "業務": "記憶體及邏輯晶片用探針卡", "代碼": "6871.T"},
+        {"名稱": "穎崴", "位置": "中下游", "業務": "測試座、探針及測試介面；非以完整探針卡為主要定位", "代碼": "6515.TW"},
+        {"名稱": "台積電", "位置": "下游", "業務": "晶圓製造與晶圓級測試需求端", "代碼": "2330.TW"},
+        {"名稱": "日月光投控", "位置": "下游", "業務": "半導體封裝測試及晶圓測試服務需求端", "代碼": "3711.TW"},
+    ],
     "功率元件": [
         {"名稱": "Wolfspeed", "位置": "上游", "業務": "碳化矽SiC晶圓、磊晶與功率半導體材料", "代碼": "WOLF"},
         {"名稱": "Coherent", "位置": "上游", "業務": "碳化矽基板、磊晶材料與化合物半導體", "代碼": "COHR"},
@@ -1079,7 +1089,7 @@ page_labels = ["🌐 全部總覽"]
 label_to_sector = {"🌐 全部總覽": None}
 
 # 將近期新增的重要板塊固定在選單前方，避免埋在數十個板塊中不易找到。
-featured_sectors = ["功率元件", "高階PCB"]
+featured_sectors = ["探針卡供應鏈", "功率元件", "高階PCB"]
 featured_labels = {}
 for featured_sector in featured_sectors:
   if featured_sector in supply_chains:
@@ -1097,14 +1107,14 @@ for name in supply_chains.keys():
   label_to_sector[label] = sector
 
 # 舊工作階段會保留原選項；每個導覽版本首次載入時主動帶到功率元件板塊。
-sector_nav_version = "20260922-power-components-v1"
+sector_nav_version = "20260924-probe-cards-v1"
 if st.session_state.get("sector_nav_version") != sector_nav_version:
-  st.session_state["sector_page"] = featured_labels.get("功率元件", "🌐 全部總覽")
+  st.session_state["sector_page"] = featured_labels.get("探針卡供應鏈", "🌐 全部總覽")
   st.session_state["sector_nav_version"] = sector_nav_version
 
 st.info(
-    f"🆕 已新增「功率元件」板塊，共 {len(supply_chains.get('功率元件', []))} 家供應鏈公司，"
-    "涵蓋 SiC／GaN／IGBT／MOSFET、晶圓磊晶、功率模組，以及資料中心與電動車應用。"
+    f"🆕 已新增「探針卡供應鏈」板塊，共 {len(supply_chains.get('探針卡供應鏈', []))} 家相關公司，"
+    "涵蓋探針卡製造、相鄰測試介面與晶圓測試需求端；公司定位不代表直接供貨關係。"
 )
 selected_label = st.selectbox("📑 產業板塊分頁", page_labels, key="sector_page")
 selected_page = label_to_sector[selected_label]
