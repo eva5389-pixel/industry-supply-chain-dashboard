@@ -1080,7 +1080,12 @@ if st.sidebar.button("🔄 重新整理即時股價"):
   st.cache_data.clear()
 
 with st.spinner("正在從 Yahoo Finance 抓取最新跨國股價數據，請稍候..."):
-  df_stocks = fetch_stock_data("20260924-parallel-fallback-v2")
+  # 將供應鏈清單納入快取鍵；新增或修改板塊後自動重建公司行情表。
+  chain_signature = tuple(
+      (category, tuple((item["代碼"], item["名稱"], item["位置"], item["業務"]) for item in stocks))
+      for category, stocks in supply_chains.items()
+  )
+  df_stocks = fetch_stock_data(("20260925-supply-chain-v3", chain_signature))
   if not df_stocks.empty:
     df_stocks["產業板塊"] = df_stocks["產業板塊"].map(clean_category_label)
 
