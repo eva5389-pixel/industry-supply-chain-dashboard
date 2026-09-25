@@ -315,6 +315,14 @@ supply_chains = {
             "代碼": "8035.T",
         },
     ],
+    "半導體建廠／廠務工程": [
+        {"名稱": "漢唐", "位置": "中游", "業務": "高科技廠房整廠系統整合、無塵室、機電及製程支援工程", "代碼": "2404.TW"},
+        {"名稱": "亞翔", "位置": "中游", "業務": "半導體廠無塵室、機電空調與高科技廠房工程", "代碼": "6139.TW"},
+        {"名稱": "聖暉*", "位置": "中游", "業務": "高科技廠房無塵室、機電空調與廠務統包工程", "代碼": "5536.TWO"},
+        {"名稱": "洋基工程", "位置": "中游", "業務": "半導體及高科技廠房無塵室與機電空調統包工程", "代碼": "6691.TW"},
+        {"名稱": "帆宣", "位置": "中游", "業務": "半導體廠務系統、設備材料供應與整合統包工程", "代碼": "6196.TW"},
+        {"名稱": "台積電", "位置": "下游", "業務": "晶圓廠與先進封裝產能擴建需求端", "代碼": "2330.TW"},
+    ],
     "晶片設計": [
         {"名稱": "聯發科", "位置": "中游", "業務": "行動處理器、AI SoC與通訊IC設計", "代碼": "2454.TW"},
         {"名稱": "創意", "位置": "中游", "業務": "特殊應用晶片ASIC、IP與先進製程設計服務", "代碼": "3443.TW"},
@@ -1133,7 +1141,7 @@ if worst_sector is not None:
   label_to_sector["📉 跌幅最多族群"] = worst_sector
 
 # 將近期新增的重要板塊固定在選單前方，避免埋在數十個板塊中不易找到。
-featured_sectors = ["ABF載板", "CCL銅箔基板", "特用化學／半導體化學品", "連接器／高速傳輸", "AI眼鏡", "線上遊戲主題", "探針卡供應鏈", "功率元件", "高階PCB"]
+featured_sectors = ["半導體建廠／廠務工程", "ABF載板", "CCL銅箔基板", "特用化學／半導體化學品", "連接器／高速傳輸", "AI眼鏡", "線上遊戲主題", "探針卡供應鏈", "功率元件", "高階PCB"]
 featured_labels = {}
 for featured_sector in featured_sectors:
   if featured_sector in supply_chains:
@@ -1151,13 +1159,13 @@ for name in supply_chains.keys():
   label_to_sector[label] = sector
 
 # 導覽版本更新時顯示 ABF 載板，讓新板塊容易找到。
-sector_nav_version = "20260925-abf-ccl-v1"
+sector_nav_version = "20260925-fab-facilities-v1"
 if st.session_state.get("sector_nav_version") != sector_nav_version:
-  st.session_state["sector_page"] = featured_labels.get("ABF載板", "🌐 全部總覽")
+  st.session_state["sector_page"] = featured_labels.get("半導體建廠／廠務工程", "🌐 全部總覽")
   st.session_state["sector_nav_version"] = sector_nav_version
 
 st.info(
-    "🆕 ABF 載板與 CCL 銅箔基板已置於板塊選單前方。"
+    "🆕 半導體建廠／廠務工程、ABF 載板與 CCL 銅箔基板已置於板塊選單前方。"
     "供應鏈位置為研究分類，不代表公司間有直接供貨關係。"
 )
 selected_label = st.selectbox("📑 產業板塊分頁", page_labels, key="sector_page")
