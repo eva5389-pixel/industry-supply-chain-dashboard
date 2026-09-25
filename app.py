@@ -1133,7 +1133,7 @@ if worst_sector is not None:
   label_to_sector["📉 跌幅最多族群"] = worst_sector
 
 # 將近期新增的重要板塊固定在選單前方，避免埋在數十個板塊中不易找到。
-featured_sectors = ["特用化學／半導體化學品", "連接器／高速傳輸", "AI眼鏡", "線上遊戲主題", "探針卡供應鏈", "功率元件", "高階PCB"]
+featured_sectors = ["ABF載板", "CCL銅箔基板", "特用化學／半導體化學品", "連接器／高速傳輸", "AI眼鏡", "線上遊戲主題", "探針卡供應鏈", "功率元件", "高階PCB"]
 featured_labels = {}
 for featured_sector in featured_sectors:
   if featured_sector in supply_chains:
@@ -1150,14 +1150,14 @@ for name in supply_chains.keys():
   page_labels.append(label)
   label_to_sector[label] = sector
 
-# 舊工作階段會保留原選項；每個導覽版本首次載入時主動帶到功率元件板塊。
-sector_nav_version = "20260924-new-sectors-v1"
+# 導覽版本更新時顯示 ABF 載板，讓新板塊容易找到。
+sector_nav_version = "20260925-abf-ccl-v1"
 if st.session_state.get("sector_nav_version") != sector_nav_version:
-  st.session_state["sector_page"] = featured_labels.get("特用化學／半導體化學品", "🌐 全部總覽")
+  st.session_state["sector_page"] = featured_labels.get("ABF載板", "🌐 全部總覽")
   st.session_state["sector_nav_version"] = sector_nav_version
 
 st.info(
-    "🆕 已新增特用化學、連接器、AI眼鏡與線上遊戲主題分頁。"
+    "🆕 ABF 載板與 CCL 銅箔基板已置於板塊選單前方。"
     "供應鏈位置為研究分類，不代表公司間有直接供貨關係。"
 )
 selected_label = st.selectbox("📑 產業板塊分頁", page_labels, key="sector_page")
