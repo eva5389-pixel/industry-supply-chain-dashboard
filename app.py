@@ -13,6 +13,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
+from fund_metadata import fetch_fund_metadata
 
 # 設定網頁版面與暗色風格
 st.set_page_config(
@@ -1076,6 +1077,47 @@ def build_sector_word_report(report_df, sector_name, average_change):
 
 # 側邊欄控制面板
 st.sidebar.header("🔍 控制面板")
+dashboard_mode = st.sidebar.selectbox(
+    "功能頁面",
+    ["產業供應鏈", "基金資料辨識"],
+    key="dashboard_mode",
+)
+
+if dashboard_mode == "基金資料辨識":
+  st.header("基金網址辨識")
+  st.write("貼上公開基金頁面，自動讀取基金名稱與 Benchmark；辨識結果可再手動修正。")
+  st.text_input(
+      "基金網址",
+      key="fund_url_input",
+      placeholder="貼上 MoneyDJ、銀行基金頁或其他公開基金網址",
+  )
+  if st.button("自動抓基金名稱與 Benchmark", icon=":material/auto_awesome:"):
+    if not st.session_state.fund_url_input.strip():
+      st.warning("請先貼上基金網址。")
+    else:
+      try:
+        with st.spinner("正在讀取基金公開頁面…"):
+          metadata = fetch_fund_metadata(st.session_state.fund_url_input.strip())
+        if metadata["fund_name"]:
+          st.session_state.fund_name_input = metadata["fund_name"]
+        if metadata["benchmark"]:
+          st.session_state.benchmark_input = metadata["benchmark"]
+        st.session_state.fund_source_url = metadata["source_url"]
+        if metadata["fund_name"] and metadata["benchmark"]:
+          st.success("已辨識基金名稱與 Benchmark。")
+        elif metadata["fund_name"]:
+          st.warning("已抓到基金名稱，但來源頁未提供可辨識的 Benchmark，請手動補充。")
+        else:
+          st.warning("已抓到 Benchmark，但基金名稱仍需手動確認。")
+      except (ValueError, requests.RequestException) as exc:
+        st.error(f"自動辨識失敗：{exc}")
+  st.text_input("基金名稱", key="fund_name_input")
+  st.text_input("Benchmark", key="benchmark_input")
+  if st.session_state.get("fund_source_url"):
+    st.caption(f"實際讀取來源：{st.session_state.fund_source_url}")
+  st.info("來源頁未明確揭露 Benchmark 時，系統不會自行猜測。")
+  st.stop()
+
 if st.sidebar.button("🔄 重新整理即時股價"):
   st.cache_data.clear()
 

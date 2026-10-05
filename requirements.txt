@@ -4,3 +4,4 @@ yfinance
 python-docx
 requests
 lxml
+beautifulsoup4
