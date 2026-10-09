@@ -531,6 +531,10 @@ supply_chains = {
         {"名稱": "SanDisk", "位置": "中游", "業務": "NAND快閃記憶體、SSD與儲存產品", "記憶體類型": "NAND", "代碼": "SNDK"},
         {"名稱": "長鑫存儲", "位置": "中游", "業務": "中國DRAM記憶體設計與晶圓製造（未上市）", "記憶體類型": "DDR／DRAM", "代碼": "未上市"},
     ],
+    "AI伺服器": [
+        {"名稱": "緯穎", "位置": "中下游", "業務": "雲端資料中心與AI伺服器、機櫃級系統設計製造", "代碼": "6669.TW"},
+        {"名稱": "緯創", "位置": "中下游", "業務": "AI伺服器、加速卡、系統組裝與資料中心硬體製造", "代碼": "3231.TW"},
+    ],
     "Apple供應鏈": [
         {"名稱": "台積電", "位置": "上游", "業務": "Apple A系列、M系列晶片與先進製程代工", "代碼": "2330.TW"},
         {"名稱": "Broadcom", "位置": "上游", "業務": "無線連線、射頻及網路晶片供應", "代碼": "AVGO"},
@@ -1146,7 +1150,7 @@ if worst_sector is not None:
   label_to_sector["📉 跌幅最多族群"] = worst_sector
 
 # 將近期新增的重要板塊固定在選單前方，避免埋在數十個板塊中不易找到。
-featured_sectors = ["半導體建廠／廠務工程", "ABF載板", "CCL銅箔基板", "特用化學／半導體化學品", "連接器／高速傳輸", "AI眼鏡", "線上遊戲主題", "探針卡供應鏈", "功率元件", "高階PCB"]
+featured_sectors = ["AI伺服器", "半導體建廠／廠務工程", "ABF載板", "CCL銅箔基板", "特用化學／半導體化學品", "連接器／高速傳輸", "AI眼鏡", "線上遊戲主題", "探針卡供應鏈", "功率元件", "高階PCB"]
 featured_labels = {}
 for featured_sector in featured_sectors:
   if featured_sector in supply_chains:
@@ -1163,14 +1167,14 @@ for name in supply_chains.keys():
   page_labels.append(label)
   label_to_sector[label] = sector
 
-# 導覽版本更新時顯示 ABF 載板，讓新板塊容易找到。
-sector_nav_version = "20260925-fab-facilities-v1"
+# 導覽版本更新時顯示 AI 伺服器，讓新板塊容易找到。
+sector_nav_version = "20261009-ai-server-v1"
 if st.session_state.get("sector_nav_version") != sector_nav_version:
-  st.session_state["sector_page"] = featured_labels.get("半導體建廠／廠務工程", "🌐 全部總覽")
+  st.session_state["sector_page"] = featured_labels.get("AI伺服器", "🌐 全部總覽")
   st.session_state["sector_nav_version"] = sector_nav_version
 
 st.info(
-    "🆕 半導體建廠／廠務工程、ABF 載板與 CCL 銅箔基板已置於板塊選單前方。"
+    "🆕 AI伺服器、半導體建廠／廠務工程、ABF 載板與 CCL 銅箔基板已置於板塊選單前方。"
     "供應鏈位置為研究分類，不代表公司間有直接供貨關係。"
 )
 selected_label = st.selectbox("📑 產業板塊分頁", page_labels, key="sector_page")
